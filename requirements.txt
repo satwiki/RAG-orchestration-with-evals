@@ -1,0 +1,40 @@
+# RAG orchestration and Azure AI Foundry
+langchain
+langchain-core
+langchain-community
+azure-ai-inference
+huggingface-hub
+
+# Observability
+opentelemetry-sdk
+
+# Document ingestion
+pypdf
+beautifulsoup4
+lxml
+
+# Evaluation and data handling
+deepeval
+langsmith
+pandas
+
+# API, configuration, and resilience
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+httpx
+tenacity
+
+# Development and notebooks
+pytest
+ruff
+tqdm
+ipykernel
+ipywidgets
+
+# Additional libraries for RAG
+faiss-cpu
+sentence-transformers
+rank-bm25
