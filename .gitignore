@@ -61,6 +61,10 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Local generated SQLite databases
+src/local_db/ecommerce/*.db
+src/local_db/ecommerce/*.db-journal
+
 # Flask stuff:
 instance/
 .webassets-cache
@@ -219,4 +223,3 @@ __marimo__/
 
 # Data store
 faiss_store/
-local_db/

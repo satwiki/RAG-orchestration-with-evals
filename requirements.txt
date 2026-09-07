@@ -2,7 +2,11 @@
 langchain
 langchain-core
 langchain-community
+langchain-openai
+langgraph
 azure-ai-inference
+azure-core
+azure-identity
 huggingface-hub
 
 # Observability
