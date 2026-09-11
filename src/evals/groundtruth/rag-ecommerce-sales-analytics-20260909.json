@@ -1,0 +1,131 @@
+{
+  "metadata": {
+    "business_use_case": "E-commerce sales analytics for business analysts and sales managers",
+    "source_of_truth": [
+      "src/local_db/ecommerce/schema.sql",
+      "src/local_db/ecommerce/seed_data.py (default seed 42, 20 products per category, 120 customers, 1800 orders, 2 years of history)"
+    ],
+    "created_at": "2026-09-09T00:00:00Z",
+    "scenario": "ecommerce-sales-analytics"
+  },
+  "samples": [
+    {
+      "id": "q1",
+      "database_id": "ecommerce",
+      "question": "What were the top 10 products sold last quarter?",
+      "schema_context": "Use products(product_id, sku, name), order_items(order_id, product_id, quantity, line_total), and orders(order_id, order_date, status). Treat the last completed quarter as Q2 2026 and exclude cancelled orders from sales.",
+      "gold_sql": "SELECT p.sku, p.name, SUM(oi.quantity) AS units_sold, ROUND(SUM(oi.line_total), 2) AS product_revenue FROM order_items AS oi JOIN products AS p ON p.product_id = oi.product_id JOIN orders AS o ON o.order_id = oi.order_id WHERE o.status != 'cancelled' AND o.order_date >= '2026-04-01' AND o.order_date < '2026-07-01' GROUP BY p.product_id, p.sku, p.name ORDER BY units_sold DESC, product_revenue DESC, p.sku ASC LIMIT 10;",
+      "gold_result": "[{\"sku\":\"BEA-3375959\",\"name\":\"Deep-Clean Hair Oil\",\"units_sold\":24,\"product_revenue\":1915.44},{\"sku\":\"ELE-4746107\",\"name\":\"Noise-Canceling Phone Stand\",\"units_sold\":24,\"product_revenue\":1591.31},{\"sku\":\"SPO-9813454\",\"name\":\"Performance Camping Cook Set\",\"units_sold\":23,\"product_revenue\":1987.74},{\"sku\":\"SPO-4788846\",\"name\":\"Impact Climbing Chalk Bag\",\"units_sold\":21,\"product_revenue\":1279.66},{\"sku\":\"HOM-2337098\",\"name\":\"Multi-Use Mixing Bowl Set\",\"units_sold\":20,\"product_revenue\":1310.24},{\"sku\":\"SPO-8722833\",\"name\":\"Carbon Camping Cook Set\",\"units_sold\":20,\"product_revenue\":356.5},{\"sku\":\"ELE-1541044\",\"name\":\"Pro Docking Station\",\"units_sold\":19,\"product_revenue\":4951.06},{\"sku\":\"ELE-8982507\",\"name\":\"Portable Noise Monitor\",\"units_sold\":19,\"product_revenue\":4053.66},{\"sku\":\"SPO-5533297\",\"name\":\"Breathable Climbing Chalk Bag\",\"units_sold\":19,\"product_revenue\":3125.89},{\"sku\":\"HOM-7143914\",\"name\":\"Ceramic Cast Iron Skillet\",\"units_sold\":19,\"product_revenue\":1613.09}]",
+      "expected_output": "For the last completed quarter, Q2 2026 (2026-04-01 through 2026-06-30), the top products by units sold on non-cancelled orders were: 1. Deep-Clean Hair Oil (BEA-3375959): 24 units, $1,915.44 in product revenue; 2. Noise-Canceling Phone Stand (ELE-4746107): 24 units, $1,591.31; 3. Performance Camping Cook Set (SPO-9813454): 23 units, $1,987.74; 4. Impact Climbing Chalk Bag (SPO-4788846): 21 units, $1,279.66; 5. Multi-Use Mixing Bowl Set (HOM-2337098): 20 units, $1,310.24; 6. Carbon Camping Cook Set (SPO-8722833): 20 units, $356.50; 7. Pro Docking Station (ELE-1541044): 19 units, $4,951.06; 8. Portable Noise Monitor (ELE-8982507): 19 units, $4,053.66; 9. Breathable Climbing Chalk Bag (SPO-5533297): 19 units, $3,125.89; 10. Ceramic Cast Iron Skillet (HOM-7143914): 19 units, $1,613.09.",
+      "claims": [
+        "products joined to order_items by product_id supplies each product name and SKU",
+        "order_items joined to orders by order_id supplies quantity and line_total",
+        "orders where status != 'cancelled' and order_date >= '2026-04-01' and order_date < '2026-07-01'",
+        "seed_data.py default deterministic generation with seed 42"
+      ]
+    },
+    {
+      "id": "q2",
+      "database_id": "ecommerce",
+      "question": "What were the sales revenue trends in the last two quarters?",
+      "schema_context": "Use orders(order_id, order_date, status, total_amount). Revenue is order-level total_amount for non-cancelled orders. The last two completed quarters are Q1 and Q2 2026.",
+      "gold_sql": "SELECT strftime('%Y-%m', order_date) AS month, COUNT(*) AS order_count, ROUND(SUM(total_amount), 2) AS revenue FROM orders WHERE status != 'cancelled' AND order_date >= '2026-01-01' AND order_date < '2026-07-01' GROUP BY strftime('%Y-%m', order_date) ORDER BY month;",
+      "gold_result": "[{\"month\":\"2026-01\",\"order_count\":104,\"revenue\":26920.36},{\"month\":\"2026-02\",\"order_count\":82,\"revenue\":22353.99},{\"month\":\"2026-03\",\"order_count\":95,\"revenue\":25774.62},{\"month\":\"2026-04\",\"order_count\":119,\"revenue\":29023.85},{\"month\":\"2026-05\",\"order_count\":144,\"revenue\":36482.75},{\"month\":\"2026-06\",\"order_count\":128,\"revenue\":35287.07}]",
+      "expected_output": "Across the last two completed quarters, non-cancelled order revenue was $26,920.36 from 104 orders in January 2026, $22,353.99 from 82 orders in February, and $25,774.62 from 95 orders in March. Q1 totaled $75,048.97 from 281 orders. Revenue was $29,023.85 from 119 orders in April, $36,482.75 from 144 orders in May, and $35,287.07 from 128 orders in June. Q2 totaled $100,793.67 from 391 orders. Q2 revenue increased by $25,744.70, or 34.30%, compared with Q1. Revenue rose sharply in April and May, then eased by 3.28% in June while remaining above every Q1 month.",
+      "claims": [
+        "orders.total_amount grouped by calendar month for orders where status != 'cancelled'",
+        "Q1 2026 covers order_date >= '2026-01-01' and order_date < '2026-04-01'",
+        "Q2 2026 covers order_date >= '2026-04-01' and order_date < '2026-07-01'",
+        "seed_data.py default deterministic generation with seed 42"
+      ]
+    },
+    {
+      "id": "q3",
+      "database_id": "ecommerce",
+      "question": "Compare delivered products with cancelled products in the last year.",
+      "schema_context": "Use orders(order_id, order_date, status, total_amount) and order_items(order_id, quantity, line_total). Compare delivered and cancelled statuses from 2025-09-09 through 2026-09-09 inclusive, keeping order totals at order grain.",
+      "gold_sql": "WITH item_totals AS (SELECT order_id, SUM(quantity) AS units, ROUND(SUM(line_total), 2) AS product_value FROM order_items GROUP BY order_id) SELECT o.status, COUNT(*) AS order_count, SUM(i.units) AS units, ROUND(SUM(i.product_value), 2) AS product_value, ROUND(SUM(o.total_amount), 2) AS order_value FROM orders AS o JOIN item_totals AS i ON i.order_id = o.order_id WHERE o.status IN ('delivered', 'cancelled') AND date(o.order_date) >= '2025-09-09' AND date(o.order_date) <= '2026-09-09' GROUP BY o.status ORDER BY CASE o.status WHEN 'delivered' THEN 1 ELSE 2 END;",
+      "gold_result": "[{\"status\":\"delivered\",\"order_count\":908,\"units\":2935,\"product_value\":230911.66,\"order_value\":244647.11},{\"status\":\"cancelled\",\"order_count\":114,\"units\":375,\"product_value\":27987.86,\"order_value\":29745.19}]",
+      "expected_output": "From 2025-09-09 through 2026-09-09 inclusive, 908 delivered orders contained 2,935 units, $230,911.66 in product revenue, and $244,647.11 in order revenue. The 114 cancelled orders contained 375 units, $27,987.86 in product value, and $29,745.19 in order value. Delivered orders therefore exceeded cancelled orders by 794 orders, 2,560 units, $202,923.80 in product value, and $214,901.92 in order value. Delivered volume was 7.83 times cancelled volume by units and 7.96 times by order count.",
+      "claims": [
+        "orders grouped where status is 'delivered' or 'cancelled' and order_date is from '2025-09-09' through '2026-09-09' inclusive",
+        "order_items joined to orders by order_id supplies unit quantity and line_total",
+        "orders.total_amount supplies order-level value without duplicating totals across line items",
+        "seed_data.py default deterministic generation with seed 42"
+      ]
+    },
+    {
+      "id": "q4",
+      "database_id": "ecommerce",
+      "question": "Which product categories generated the most sales in Q2 2026?",
+      "schema_context": "Use categories(category_id, name), products(product_id, category_id), order_items(order_id, product_id, quantity, line_total), and orders(order_id, order_date, status). Exclude cancelled orders and count distinct orders per category.",
+      "gold_sql": "SELECT c.name AS category, COUNT(DISTINCT o.order_id) AS order_count, SUM(oi.quantity) AS units, ROUND(SUM(oi.line_total), 2) AS product_revenue FROM order_items AS oi JOIN orders AS o ON o.order_id = oi.order_id JOIN products AS p ON p.product_id = oi.product_id JOIN categories AS c ON c.category_id = p.category_id WHERE o.status != 'cancelled' AND o.order_date >= '2026-04-01' AND o.order_date < '2026-07-01' GROUP BY c.category_id, c.name ORDER BY product_revenue DESC, category ASC;",
+      "gold_result": "[{\"category\":\"Electronics\",\"order_count\":134,\"units\":244,\"product_revenue\":37293.18},{\"category\":\"Sports & Outdoors\",\"order_count\":145,\"units\":261,\"product_revenue\":26429.73},{\"category\":\"Home & Kitchen\",\"order_count\":127,\"units\":244,\"product_revenue\":14398.52},{\"category\":\"Beauty & Personal Care\",\"order_count\":133,\"units\":229,\"product_revenue\":10705.06},{\"category\":\"Office Supplies\",\"order_count\":119,\"units\":198,\"product_revenue\":6449.3}]",
+      "expected_output": "In Q2 2026, Electronics ranked first with 134 orders, 244 units, and $37,293.18 in product revenue. Sports & Outdoors followed with 145 orders, 261 units, and $26,429.73; Home & Kitchen had 127 orders, 244 units, and $14,398.52; Beauty & Personal Care had 133 orders, 229 units, and $10,705.06; and Office Supplies had 119 orders, 198 units, and $6,449.30. Electronics generated the most product revenue, while Sports & Outdoors sold the most units. Total Q2 product revenue was $95,275.79 across 1,176 units.",
+      "claims": [
+        "categories joined through products and order_items supplies category-level product sales",
+        "orders where status != 'cancelled' and order_date >= '2026-04-01' and order_date < '2026-07-01'",
+        "category order counts use distinct order_id; units and product revenue use order_items.quantity and order_items.line_total",
+        "seed_data.py default deterministic generation with seed 42"
+      ]
+    },
+    {
+      "id": "q5",
+      "database_id": "ecommerce",
+      "question": "Which five states generated the most delivered-order revenue in the last year?",
+      "schema_context": "Use orders(order_id, order_date, status, total_amount, shipping_state) and order_items(order_id, quantity). Include delivered orders from 2025-09-09 through 2026-09-09 inclusive, and sum order revenue once per order.",
+      "gold_sql": "WITH item_units AS (SELECT order_id, SUM(quantity) AS units FROM order_items GROUP BY order_id) SELECT o.shipping_state AS state, COUNT(*) AS delivered_orders, SUM(i.units) AS units, ROUND(SUM(o.total_amount), 2) AS order_revenue FROM orders AS o JOIN item_units AS i ON i.order_id = o.order_id WHERE o.status = 'delivered' AND date(o.order_date) >= '2025-09-09' AND date(o.order_date) <= '2026-09-09' GROUP BY o.shipping_state ORDER BY order_revenue DESC, state ASC LIMIT 5;",
+      "gold_result": "[{\"state\":\"CA\",\"delivered_orders\":118,\"units\":404,\"order_revenue\":33497.02},{\"state\":\"TX\",\"delivered_orders\":114,\"units\":363,\"order_revenue\":28590.69},{\"state\":\"FL\",\"delivered_orders\":75,\"units\":253,\"order_revenue\":18939.24},{\"state\":\"NC\",\"delivered_orders\":69,\"units\":217,\"order_revenue\":17783.94},{\"state\":\"AZ\",\"delivered_orders\":49,\"units\":166,\"order_revenue\":16284.35}]",
+      "expected_output": "From 2025-09-09 through 2026-09-09 inclusive, California ranked first with 118 delivered orders, 404 units, and $33,497.02 in order revenue. Texas followed with 114 orders, 363 units, and $28,590.69; Florida had 75 orders, 253 units, and $18,939.24; North Carolina had 69 orders, 217 units, and $17,783.94; and Arizona had 49 orders, 166 units, and $16,284.35. California led Texas by $4,906.33 in delivered-order revenue.",
+      "claims": [
+        "orders.shipping_state grouped for orders where status = 'delivered' and order_date is from '2025-09-09' through '2026-09-09' inclusive",
+        "orders.total_amount is summed once per order; order_items.quantity supplies units",
+        "state grouping reconciles to 908 delivered orders and $244,647.11 in total delivered-order revenue across all states",
+        "seed_data.py default deterministic generation with seed 42"
+      ]
+    },
+    {
+      "id": "q6",
+      "database_id": "ecommerce",
+      "question": "Which payment methods had the highest cancellation rates in the last year?",
+      "schema_context": "Use orders(order_id, order_date, status, total_amount, payment_method). Calculate each payment method's cancelled-order count divided by its total order count for 2025-09-09 through 2026-09-09 inclusive.",
+      "gold_sql": "SELECT payment_method, COUNT(*) AS total_orders, SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_orders, ROUND(SUM(CASE WHEN status = 'cancelled' THEN total_amount ELSE 0 END), 2) AS cancelled_value, ROUND(100.0 * SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) / COUNT(*), 2) AS cancellation_rate_pct FROM orders WHERE date(order_date) >= '2025-09-09' AND date(order_date) <= '2026-09-09' GROUP BY payment_method ORDER BY cancellation_rate_pct DESC, payment_method ASC;",
+      "gold_result": "[{\"payment_method\":\"apple_pay\",\"total_orders\":159,\"cancelled_orders\":14,\"cancelled_value\":3184.16,\"cancellation_rate_pct\":8.81},{\"payment_method\":\"paypal\",\"total_orders\":263,\"cancelled_orders\":23,\"cancelled_value\":5716.97,\"cancellation_rate_pct\":8.75},{\"payment_method\":\"debit_card\",\"total_orders\":276,\"cancelled_orders\":23,\"cancelled_value\":5997.71,\"cancellation_rate_pct\":8.33},{\"payment_method\":\"credit_card\",\"total_orders\":726,\"cancelled_orders\":52,\"cancelled_value\":14261.27,\"cancellation_rate_pct\":7.16},{\"payment_method\":\"gift_card\",\"total_orders\":59,\"cancelled_orders\":2,\"cancelled_value\":585.08,\"cancellation_rate_pct\":3.39}]",
+      "expected_output": "From 2025-09-09 through 2026-09-09 inclusive, Apple Pay had 14 cancellations among 159 orders, an 8.81% cancellation rate and $3,184.16 in cancelled order value. PayPal had 23 of 263 orders cancelled (8.75%, $5,716.97); debit card had 23 of 276 (8.33%, $5,997.71); credit card had 52 of 726 (7.16%, $14,261.27); and gift card had 2 of 59 (3.39%, $585.08). Apple Pay had the highest rate, narrowly above PayPal. Credit cards had the greatest cancelled value because they handled substantially more orders.",
+      "claims": [
+        "orders grouped by payment_method for order_date from '2025-09-09' through '2026-09-09' inclusive",
+        "cancellation rate is count of orders where status = 'cancelled' divided by all orders for each payment method",
+        "cancelled order value is the sum of orders.total_amount where status = 'cancelled'",
+        "seed_data.py default deterministic generation with seed 42"
+      ]
+    },
+    {
+      "id": "q7",
+      "database_id": "ecommerce",
+      "question": "Who were the top five customers by sales revenue in Q2 2026?",
+      "schema_context": "Use customers(customer_id, email, first_name, last_name) and orders(customer_id, order_date, status, total_amount). Exclude cancelled orders and sum revenue once per order in Q2 2026.",
+      "gold_sql": "SELECT c.first_name || ' ' || c.last_name AS customer_name, c.email, COUNT(*) AS order_count, ROUND(SUM(o.total_amount), 2) AS revenue FROM orders AS o JOIN customers AS c ON c.customer_id = o.customer_id WHERE o.status != 'cancelled' AND o.order_date >= '2026-04-01' AND o.order_date < '2026-07-01' GROUP BY c.customer_id, c.first_name, c.last_name, c.email ORDER BY revenue DESC, c.email ASC LIMIT 5;",
+      "gold_result": "[{\"customer_name\":\"Sophia Smith\",\"email\":\"sophia.smith.7@example.com\",\"order_count\":13,\"revenue\":3866.42},{\"customer_name\":\"James Davis\",\"email\":\"james.davis.12@example.com\",\"order_count\":6,\"revenue\":2501.85},{\"customer_name\":\"Mia Anderson\",\"email\":\"mia.anderson.11@example.com\",\"order_count\":7,\"revenue\":2440.02},{\"customer_name\":\"Harper Martinez\",\"email\":\"harper.martinez.105@example.com\",\"order_count\":8,\"revenue\":2422.52},{\"customer_name\":\"Joseph Coleman\",\"email\":\"joseph.coleman.90@example.com\",\"order_count\":8,\"revenue\":2356.39}]",
+      "expected_output": "For non-cancelled orders in Q2 2026, Sophia Smith (sophia.smith.7@example.com) ranked first with 13 orders and $3,866.42 in revenue. James Davis (james.davis.12@example.com) followed with 6 orders and $2,501.85; Mia Anderson (mia.anderson.11@example.com) had 7 orders and $2,440.02; Harper Martinez (harper.martinez.105@example.com) had 8 orders and $2,422.52; and Joseph Coleman (joseph.coleman.90@example.com) had 8 orders and $2,356.39.",
+      "claims": [
+        "customers joined to orders by customer_id supplies customer name and email",
+        "orders where status != 'cancelled' and order_date >= '2026-04-01' and order_date < '2026-07-01'",
+        "customer revenue uses orders.total_amount summed once per order",
+        "seed_data.py default deterministic generation with seed 42"
+      ]
+    },
+    {
+      "id": "q8",
+      "database_id": "ecommerce",
+      "question": "What were the main reasons customers cancelled orders in the last year?",
+      "schema_context": "Use SQLite schema introspection for the orders table. The table stores order status and financial details but has no cancellation reason or cause column, so causal claims are out of scope.",
+      "gold_sql": "SELECT name AS column_name FROM pragma_table_info('orders') ORDER BY cid;",
+      "gold_result": "[{\"column_name\":\"order_id\"},{\"column_name\":\"customer_id\"},{\"column_name\":\"order_number\"},{\"column_name\":\"order_date\"},{\"column_name\":\"status\"},{\"column_name\":\"shipping_amount\"},{\"column_name\":\"tax_amount\"},{\"column_name\":\"discount_amount\"},{\"column_name\":\"total_amount\"},{\"column_name\":\"payment_method\"},{\"column_name\":\"shipping_city\"},{\"column_name\":\"shipping_state\"},{\"column_name\":\"shipping_country\"}]",
+      "expected_output": "The available ecommerce data cannot determine why customers cancelled their orders. The orders table records whether an order was cancelled and its financial details, but it does not contain a cancellation reason or cause field. Cancellation counts and values can be reported, but attributing causes would be unsupported.",
+      "claims": [
+        "schema.sql orders table contains status, financial amounts, payment method, and shipping location",
+        "schema.sql orders table does not contain a cancellation_reason or cancellation cause column"
+      ]
+    }
+  ]
+}

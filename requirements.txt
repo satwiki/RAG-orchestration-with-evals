@@ -25,6 +25,7 @@ pandas
 # API, configuration, and resilience
 fastapi
 uvicorn[standard]
+streamlit
 pydantic
 pydantic-settings
 python-dotenv
