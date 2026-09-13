@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,9 @@ from types import ModuleType
 from typing import Any
 
 from langchain_core.messages import HumanMessage
+from dotenv import load_dotenv
+
+load_dotenv()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = REPO_ROOT / "src"
@@ -75,7 +79,13 @@ def _last_successful_sql(history: list[dict[str, Any]]) -> str | None:
     return None
 
 
-def invoke_agent(question: str, framework_name: str = DEFAULT_FRAMEWORK) -> AgentRunResult:
+def invoke_agent(
+    question: str,
+    framework_name: str = DEFAULT_FRAMEWORK,
+    *,
+    task_context: str | None = None,
+    required_output_columns: list[str] | None = None,
+) -> AgentRunResult:
     """Run a framework agent and return SQL history plus the final answer.
 
     Prefers get_compiled_agent().invoke so query_history is available. Falls
@@ -84,13 +94,22 @@ def invoke_agent(question: str, framework_name: str = DEFAULT_FRAMEWORK) -> Agen
     stripped = question.strip()
     if not stripped:
         raise ValueError("Question must not be empty.")
+    if not os.environ.get("RAG_EVAL_AS_OF_DATE"):
+        raise ValueError("RAG_EVAL_AS_OF_DATE is required for evaluation.")
 
     module = load_framework_agent_module(framework_dir(framework_name))
     get_compiled = getattr(module, "get_compiled_agent", None)
     if callable(get_compiled):
-        result = get_compiled().invoke(
-            {"user_question": stripped, "messages": [HumanMessage(content=stripped)]}
-        )
+        initial_state: dict[str, Any] = {
+            "user_question": stripped,
+            "messages": [HumanMessage(content=stripped)],
+            "is_evaluation": True,
+        }
+        if task_context:
+            initial_state["task_context"] = task_context
+        if required_output_columns:
+            initial_state["required_output_columns"] = required_output_columns
+        result = get_compiled().invoke(initial_state)
         history = list(result.get("query_history") or [])
         return AgentRunResult(
             question=stripped,

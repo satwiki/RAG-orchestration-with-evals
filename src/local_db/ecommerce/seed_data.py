@@ -473,12 +473,14 @@ def generate_products(
     *,
     products_per_category: int = 20,
     catalog_start: date | None = None,
+    as_of_date: date | None = None,
 ) -> list[ProductRecord]:
     """Generate products across all categories."""
     if products_per_category < 1:
         raise ValueError("products_per_category must be at least 1")
 
-    start = catalog_start or date.today().replace(year=date.today().year - 3)
+    effective_as_of = as_of_date or date.today()
+    start = catalog_start or effective_as_of.replace(year=effective_as_of.year - 3)
     products: list[ProductRecord] = []
     used_names: set[str] = set()
 
@@ -530,8 +532,8 @@ def generate_products(
                 minutes=rng.randint(0, 59),
             )
             updated_at_dt = created_at_dt + timedelta(days=rng.randint(0, 400))
-            if updated_at_dt.date() > date.today():
-                updated_at_dt = datetime.combine(date.today(), created_at_dt.time())
+            if updated_at_dt.date() > effective_as_of:
+                updated_at_dt = datetime.combine(effective_as_of, created_at_dt.time())
 
             products.append(
                 ProductRecord(
@@ -561,12 +563,14 @@ def generate_customers(
     *,
     customer_count: int = 120,
     history_start: date | None = None,
+    as_of_date: date | None = None,
 ) -> list[CustomerRecord]:
     """Generate a customer directory spanning the order history window."""
     if customer_count < 1:
         raise ValueError("customer_count must be at least 1")
 
-    start = history_start or (date.today() - timedelta(days=365 * 2 + 30))
+    effective_as_of = as_of_date or date.today()
+    start = history_start or (effective_as_of - timedelta(days=365 * 2 + 30))
     customers: list[CustomerRecord] = []
     used_emails: set[str] = set()
 
@@ -581,7 +585,7 @@ def generate_customers(
             email = f"{local_part}.{rng.randint(100, 999)}@example.com"
         used_emails.add(email)
 
-        signup_offset = rng.randint(0, max((date.today() - start).days, 1))
+        signup_offset = rng.randint(0, max((effective_as_of - start).days, 1))
         signup_date = start + timedelta(days=signup_offset)
         is_active = 1 if rng.random() > 0.08 else 0
 
@@ -634,6 +638,7 @@ def generate_orders(
     products: list[ProductRecord],
     order_count: int = 1800,
     history_years: int = 2,
+    as_of_date: date | None = None,
 ) -> list[OrderRecord]:
     """Generate multi-year order history with line items."""
     if order_count < 1:
@@ -645,7 +650,7 @@ def generate_orders(
     if not products:
         raise ValueError("products cannot be empty")
 
-    history_end = date.today()
+    history_end = as_of_date or date.today()
     history_start = history_end - timedelta(days=365 * history_years)
     active_products = [product for product in products if product.is_active] or products
     orders: list[OrderRecord] = []
@@ -745,6 +750,7 @@ def generate_product_engagement(
     products: list[ProductRecord],
     orders: list[OrderRecord],
     history_years: int = 2,
+    as_of_date: date | None = None,
 ) -> list[ProductEngagementRecord]:
     """Generate daily clicks and dwell time correlated with order demand.
 
@@ -757,7 +763,7 @@ def generate_product_engagement(
     if history_years < 2:
         raise ValueError("history_years must be at least 2")
 
-    history_end = date.today()
+    history_end = as_of_date or date.today()
     history_start = history_end - timedelta(days=365 * history_years)
     demand = _units_ordered_by_product_day(orders)
     engagement_rows: list[ProductEngagementRecord] = []

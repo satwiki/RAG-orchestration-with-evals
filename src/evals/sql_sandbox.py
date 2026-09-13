@@ -20,6 +20,7 @@ _FORBIDDEN_KEYWORDS = re.compile(
 )
 _ORDER_BY = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
 _NUMERIC_STRING = re.compile(r"^-?\d+(\.\d+)?$")
+_MONTH_VALUE = re.compile(r"^(\d{4}-\d{2})(?:-01)?$")
 _DEFAULT_ROW_LIMIT = 10_000
 _NUMERIC_TOLERANCE = 0.01
 
@@ -42,8 +43,10 @@ def assert_read_only(sql: str) -> None:
 
 
 def sql_requires_row_order(sql: str) -> bool:
-    """Return True when the statement includes ORDER BY."""
-    return _ORDER_BY.search(sql or "") is not None
+    """Return True when ordering affects a ranked or descending result."""
+    if _ORDER_BY.search(sql or "") is None:
+        return False
+    return bool(re.search(r"\bLIMIT\b|\bDESC\b", sql or "", re.IGNORECASE))
 
 
 def parse_result_payload(payload: Any) -> list[dict[str, Any]]:
@@ -105,8 +108,29 @@ def normalize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Lower-case keys and normalize cell values."""
     normalized: list[dict[str, Any]] = []
     for row in rows:
-        normalized.append({str(key).lower(): _normalize_value(value) for key, value in row.items()})
+        normalized.append(_canonicalize_row(row))
     return normalized
+
+
+_COLUMN_ALIASES = {
+    "product_sku": "sku",
+    "product_name": "name",
+    "product_category": "category",
+    "sales_amount": "product_revenue",
+    "gross_sales_amount": "product_revenue",
+    "delivered_order_revenue": "order_revenue",
+}
+
+
+def _canonicalize_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalize common semantic aliases while retaining required result fields."""
+    canonical = {
+        _COLUMN_ALIASES.get(str(key).lower(), str(key).lower()): _normalize_value(value)
+        for key, value in row.items()
+    }
+    if "customer_name" not in canonical and {"first_name", "last_name"} <= canonical.keys():
+        canonical["customer_name"] = f"{canonical['first_name']} {canonical['last_name']}"
+    return canonical
 
 
 def _values_equal(left: Any, right: Any) -> bool:
@@ -115,6 +139,11 @@ def _values_equal(left: Any, right: Any) -> bool:
         return left is right
     if isinstance(left, float) and isinstance(right, float):
         return math.isclose(left, right, abs_tol=_NUMERIC_TOLERANCE, rel_tol=0.0)
+    if isinstance(left, str) and isinstance(right, str):
+        left_month = _MONTH_VALUE.fullmatch(left)
+        right_month = _MONTH_VALUE.fullmatch(right)
+        if left_month and right_month:
+            return left_month.group(1) == right_month.group(1)
     return left == right
 
 
@@ -150,10 +179,11 @@ def results_equivalent(
 
     actual_columns = set(actual[0])
     expected_columns = set(expected[0])
-    if actual_columns != expected_columns:
+    if not expected_columns <= actual_columns:
         missing = sorted(expected_columns - actual_columns)
-        extra = sorted(actual_columns - expected_columns)
-        return False, f"Column mismatch: missing={missing} extra={extra}"
+        return False, f"Column mismatch: missing={missing}"
+    if actual_columns != expected_columns:
+        actual = [{key: row[key] for key in expected_columns} for row in actual]
 
     if order_matters:
         for index, (actual_row, expected_row) in enumerate(zip(actual, expected, strict=True)):

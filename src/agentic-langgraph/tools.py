@@ -2,11 +2,35 @@
 
 from __future__ import annotations
 
+import os
+from datetime import date, datetime, time, timezone
 from typing import Any
 
 from langchain_core.tools import tool
 
 from utils.db import run_read_only_query
+
+
+@tool
+def get_current_datetime(is_evaluation: bool = False) -> str:
+    """Return a real or evaluation date and time as an ISO 8601 timestamp.
+
+    Args:
+        is_evaluation: Use the frozen evaluation date instead of the real clock.
+
+    Returns:
+        An ISO 8601 timestamp with timezone information.
+
+    Raises:
+        ValueError: If evaluation mode is enabled without an evaluation date.
+    """
+    if is_evaluation:
+        evaluation_date = os.environ.get("RAG_EVAL_AS_OF_DATE")
+        if not evaluation_date:
+            raise ValueError("RAG_EVAL_AS_OF_DATE is required in evaluation mode.")
+        frozen_date = date.fromisoformat(evaluation_date)
+        return datetime.combine(frozen_date, time.min, tzinfo=timezone.utc).isoformat()
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 @tool

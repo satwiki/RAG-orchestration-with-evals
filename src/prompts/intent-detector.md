@@ -8,3 +8,8 @@ Block the request if it:
 - Is unrelated to this e-commerce dataset (sales, revenue, customers, products, categories, orders, engagement trends).
 
 Otherwise allow the request.
+
+Questions about missing fields or unsupported causal explanations are still allowed when
+they can be answered by inspecting the schema and reporting that the available data is
+insufficient. Do not block a read-only question merely because the requested field may not
+exist; let the report builder explain the limitation without inventing a cause.

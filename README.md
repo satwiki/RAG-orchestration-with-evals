@@ -1,11 +1,5 @@
----
-title: RAG with Evaluations Samples
-description: Sample RAG applications and evaluation workflows across multiple agent frameworks
----
-
-Sample retrieval-augmented generation (RAG) applications with reusable prompts,
-local data sources, and evaluation workflows for LangGraph and Microsoft Agent
-Framework.
+### RAG Orchestrations with Evaluations
+RAG applications and evaluation workflows across multiple agent frameworks
 
 ## Setup
 
@@ -38,11 +32,22 @@ Start the Streamlit application:
 streamlit run src/main.py
 ```
 
+The **Groundtruth and evals** tab in the UI lists every JSON dataset under
+`src/evals/groundtruth/`, displays metadata and sample goldens, and supports
+editing existing samples, adding samples, and creating new datasets in the
+same `metadata`/`samples` format. Dataset deletion is intentionally not
+available. The same tab can run DeepEval for the selected dataset and
+framework, with an optional execution-accuracy-only mode.
+
 Run DeepEval against the ecommerce sales analytics goldens:
 
 ```powershell
 python src/evals/run_deepeval.py
 ```
+
+The evaluator creates an isolated SQLite fixture using the groundtruth
+snapshot's frozen date and seed. Pass `--db-path` only when intentionally
+evaluating against an existing database.
 
 Execution accuracy only, without an LLM judge:
 

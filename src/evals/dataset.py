@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -22,17 +23,6 @@ REQUIRED_SAMPLE_FIELDS = (
     "expected_output",
     "claims",
 )
-
-KNOWN_COVERAGE_GAPS = (
-    "No samples cover product_engagement, conversion, profit/margin, or brand.",
-    "No simple single-table lookups, empty-result windows, or blocked write intents.",
-    "agentic-maf is empty, so this dataset cannot evaluate Microsoft Agent Framework.",
-    "Each sample has one gold_sql while LangGraph may emit multiple SQL turns.",
-    "Gold results were verified against seed 42 with frozen date 2026-09-09; "
-    "seed_data.py uses date.today(), so a rebuilt DB on another day will not "
-    "match stored gold_result bytes.",
-)
-
 
 @dataclass(frozen=True)
 class GroundtruthSample:
@@ -62,6 +52,15 @@ def default_dataset_path() -> Path:
     return Path(__file__).resolve().parent / "groundtruth" / "rag-ecommerce-sales-analytics-20260909.json"
 
 
+def dataset_as_of_date(dataset: GroundtruthDataset) -> date:
+    """Return the frozen analysis date declared by a groundtruth dataset."""
+    raw_date = dataset.metadata.get("as_of_date") or str(dataset.metadata.get("created_at", ""))[:10]
+    try:
+        return date.fromisoformat(raw_date)
+    except ValueError as exc:
+        raise ValueError(f"Groundtruth metadata must provide a valid as_of_date, got {raw_date!r}.") from exc
+
+
 def load_groundtruth(path: Path | None = None) -> GroundtruthDataset:
     """Load and validate the repository groundtruth JSON file.
 
@@ -77,6 +76,11 @@ def load_groundtruth(path: Path | None = None) -> GroundtruthDataset:
     """
     dataset_path = path or default_dataset_path()
     payload = json.loads(dataset_path.read_text(encoding="utf-8"))
+    return parse_groundtruth_payload(payload, dataset_path)
+
+
+def parse_groundtruth_payload(payload: Any, dataset_path: Path) -> GroundtruthDataset:
+    """Validate and parse an in-memory groundtruth document."""
     if not isinstance(payload, dict):
         raise ValueError(f"{dataset_path} must contain a JSON object with metadata and samples.")
 
@@ -117,17 +121,17 @@ def load_groundtruth(path: Path | None = None) -> GroundtruthDataset:
     return GroundtruthDataset(path=dataset_path, metadata=metadata, samples=samples)
 
 
-def log_coverage_gaps(dataset: GroundtruthDataset) -> None:
-    """Log known dataset limitations so evaluation results are interpreted correctly."""
-    logger.info(
-        "Loaded %s samples from %s (scenario=%s)",
-        len(dataset.samples),
-        dataset.path.name,
-        dataset.metadata.get("scenario"),
+def save_groundtruth(path: Path, payload: dict[str, Any]) -> GroundtruthDataset:
+    """Validate and atomically save a groundtruth document in repository format."""
+    dataset = parse_groundtruth_payload(payload, path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    temporary_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
     )
-    for gap in KNOWN_COVERAGE_GAPS:
-        logger.warning("Groundtruth gap: %s", gap)
-
+    temporary_path.replace(path)
+    return dataset
 
 def sample_to_golden(sample: GroundtruthSample) -> Golden:
     """Map a repository sample onto DeepEval's Golden model.

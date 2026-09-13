@@ -7,6 +7,7 @@ import argparse
 import logging
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
 
 from seed_data import (
@@ -85,6 +86,12 @@ def create_parser() -> argparse.ArgumentParser:
         type=int,
         default=2,
         help="Number of years of order history to generate (minimum 2, default: 2)",
+    )
+    parser.add_argument(
+        "--as-of-date",
+        type=date.fromisoformat,
+        default=None,
+        help="Freeze generated catalog and history relative to YYYY-MM-DD (default: today).",
     )
     parser.add_argument(
         "--overwrite",
@@ -360,24 +367,35 @@ def populate_database(
     customer_count: int,
     order_count: int,
     history_years: int,
+    as_of_date: date | None = None,
 ) -> dict[str, object]:
     """Generate dummy data and write it into the open database connection."""
     rng = build_rng(seed)
     categories = generate_categories()
-    products = generate_products(rng, products_per_category=products_per_category)
-    customers = generate_customers(rng, customer_count=customer_count)
+    products = generate_products(
+        rng,
+        products_per_category=products_per_category,
+        as_of_date=as_of_date,
+    )
+    customers = generate_customers(
+        rng,
+        customer_count=customer_count,
+        as_of_date=as_of_date,
+    )
     orders = generate_orders(
         rng,
         customers=customers,
         products=products,
         order_count=order_count,
         history_years=history_years,
+        as_of_date=as_of_date,
     )
     engagement = generate_product_engagement(
         rng,
         products=products,
         orders=orders,
         history_years=history_years,
+        as_of_date=as_of_date,
     )
 
     clear_tables(connection)
@@ -592,6 +610,7 @@ def main(argv: list[str] | None = None) -> int:
                 customer_count=args.customers,
                 order_count=args.orders,
                 history_years=args.history_years,
+                as_of_date=args.as_of_date,
             )
             checks = verify_database(connection)
 

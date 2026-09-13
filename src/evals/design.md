@@ -50,17 +50,6 @@ natural-language response.
 LangGraph may emit several queries. The harness scores the last SQL statement
 that executed without error.
 
-## Known dataset gaps
-
-The current golden file covers eight sales-analytics questions. It does not
-cover product engagement, profit, brand, simple lookups, empty windows, blocked
-write intents, or Microsoft Agent Framework.
-
-Gold results were originally verified with seed 42 and frozen date 2026-09-09.
-`seed_data.py` uses `date.today()`, so a rebuilt database on another calendar
-day will not match stored `gold_result` bytes. Live gold SQL execution keeps
-execution scoring valid against the current database.
-
 ## Decision log
 
 | Date       | Decision                                                                 | Rationale |

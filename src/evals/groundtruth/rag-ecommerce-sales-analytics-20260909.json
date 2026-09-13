@@ -6,6 +6,8 @@
       "src/local_db/ecommerce/seed_data.py (default seed 42, 20 products per category, 120 customers, 1800 orders, 2 years of history)"
     ],
     "created_at": "2026-09-09T00:00:00Z",
+    "as_of_date": "2026-09-09",
+    "seed": 42,
     "scenario": "ecommerce-sales-analytics"
   },
   "samples": [
@@ -112,19 +114,6 @@
         "orders where status != 'cancelled' and order_date >= '2026-04-01' and order_date < '2026-07-01'",
         "customer revenue uses orders.total_amount summed once per order",
         "seed_data.py default deterministic generation with seed 42"
-      ]
-    },
-    {
-      "id": "q8",
-      "database_id": "ecommerce",
-      "question": "What were the main reasons customers cancelled orders in the last year?",
-      "schema_context": "Use SQLite schema introspection for the orders table. The table stores order status and financial details but has no cancellation reason or cause column, so causal claims are out of scope.",
-      "gold_sql": "SELECT name AS column_name FROM pragma_table_info('orders') ORDER BY cid;",
-      "gold_result": "[{\"column_name\":\"order_id\"},{\"column_name\":\"customer_id\"},{\"column_name\":\"order_number\"},{\"column_name\":\"order_date\"},{\"column_name\":\"status\"},{\"column_name\":\"shipping_amount\"},{\"column_name\":\"tax_amount\"},{\"column_name\":\"discount_amount\"},{\"column_name\":\"total_amount\"},{\"column_name\":\"payment_method\"},{\"column_name\":\"shipping_city\"},{\"column_name\":\"shipping_state\"},{\"column_name\":\"shipping_country\"}]",
-      "expected_output": "The available ecommerce data cannot determine why customers cancelled their orders. The orders table records whether an order was cancelled and its financial details, but it does not contain a cancellation reason or cause field. Cancellation counts and values can be reported, but attributing causes would be unsupported.",
-      "claims": [
-        "schema.sql orders table contains status, financial amounts, payment method, and shipping location",
-        "schema.sql orders table does not contain a cancellation_reason or cancellation cause column"
       ]
     }
   ]

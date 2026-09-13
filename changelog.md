@@ -1,10 +1,46 @@
 ---
 title: Changelog
 description: Semantic version history for RAG-with-evals-samples features.
-ms.date: 2026-09-10
+ms.date: 2026-09-13
 ---
 
 # Changelog
+
+## 0.3.2 - 2026-09-13
+
+### Fixed
+
+* The LangGraph clock now uses a frozen date only when evaluation mode is
+  explicit. Normal inference always uses the real local date and time, even
+  if an evaluation date remains in the process environment.
+
+## 0.3.1 - 2026-09-13
+
+### Changed
+
+* LangGraph temporal handling now uses a runtime clock tool. Explicit dates in
+  user questions take precedence, while relative periods use the tool result
+  without storing an as-of date in graph state.
+
+## 0.3.0 - 2026-09-11
+
+### Added
+
+* Streamlit now visualizes groundtruth datasets, supports validated sample and
+  metadata edits, allows adding samples and creating new datasets without a
+  delete operation, and runs DeepEval directly from the UI.
+* The DeepEval runner exposes structured results for programmatic callers while
+  preserving the existing CLI entry point.
+
+## 0.2.1 - 2026-09-11
+
+### Fixed
+
+* DeepEval now creates a deterministic frozen-date SQLite fixture by default,
+  configures UTF-8 output on Windows, and records generated SQL history.
+* LangGraph relative-date handling uses explicit completed-quarter and
+  last-year boundaries, while task-specific schema requirements and complete
+  query results are preserved through reporting.
 
 ## 0.2.0 - 2026-09-10
 

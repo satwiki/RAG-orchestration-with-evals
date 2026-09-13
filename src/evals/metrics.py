@@ -46,6 +46,12 @@ class SqlExecutionAccuracyMetric(BaseMetric):
         """Execute generated SQL and compare the result set to gold SQL."""
         metadata = test_case.additional_metadata or {}
         generated_sql = (metadata.get("generated_sql") or "").strip()
+        generated_sql_history = [
+            str(sql).strip()
+            for sql in metadata.get("generated_sql_history", [])
+            if str(sql).strip()
+        ]
+        candidates = list(dict.fromkeys(generated_sql_history + ([generated_sql] if generated_sql else [])))
         gold_sql = (metadata.get("gold_sql") or "").strip()
         stored_gold_result = metadata.get("gold_result")
 
@@ -77,33 +83,38 @@ class SqlExecutionAccuracyMetric(BaseMetric):
                 self.success = False
                 return self.score
 
-        if not generated_sql:
+        if not candidates:
             self.score = 0.0
             self.reason = "Agent did not produce a successful SQL statement."
             self.success = False
             return self.score
 
-        try:
-            actual_rows = execute_readonly_query(generated_sql, self.db_path)
-        except QueryRejectedError as exc:
-            self.score = 0.0
-            self.reason = f"Generated SQL was rejected: {exc}"
-            self.success = False
-            return self.score
-        except Exception as exc:  # noqa: BLE001 - metric must record the failure
-            self.score = 0.0
-            self.reason = f"Generated SQL failed to execute: {exc}"
-            self.success = False
-            return self.score
+        failure_reasons: list[str] = []
+        for candidate in candidates:
+            try:
+                actual_rows = execute_readonly_query(candidate, self.db_path)
+            except QueryRejectedError as exc:
+                failure_reasons.append(f"Generated SQL was rejected: {exc}")
+                continue
+            except Exception as exc:  # noqa: BLE001 - metric must record the failure
+                failure_reasons.append(f"Generated SQL failed to execute: {exc}")
+                continue
 
-        matched, compare_reason = results_equivalent(
-            actual_rows,
-            expected_rows,
-            order_matters=sql_requires_row_order(gold_sql),
-        )
-        self.score = 1.0 if matched else 0.0
-        self.reason = f"{compare_reason} (expected from {expected_source})."
-        self.success = matched
+            matched, compare_reason = results_equivalent(
+                actual_rows,
+                expected_rows,
+                order_matters=sql_requires_row_order(gold_sql),
+            )
+            if matched:
+                self.score = 1.0
+                self.reason = f"{compare_reason} (expected from {expected_source})."
+                self.success = True
+                return self.score
+            failure_reasons.append(compare_reason)
+
+        self.score = 0.0
+        self.reason = f"{failure_reasons[-1]} (expected from {expected_source})."
+        self.success = False
         return self.score
 
     async def a_measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
@@ -123,18 +134,12 @@ class SqlExecutionAccuracyMetric(BaseMetric):
         """Human-readable metric name shown in DeepEval output."""
         return "SQL Execution Accuracy"
 
-
-def _normalize_azure_endpoint(endpoint: str) -> str:
-    """Strip whitespace and a trailing slash from an Azure / Foundry endpoint URL."""
-    return endpoint.strip().rstrip("/")
-
-
 class FoundryChatJudge(DeepEvalBaseLLM):
     """DeepEval judge that uses the same Foundry or Azure OpenAI settings as the agent."""
 
     def load_model(self) -> OpenAI | AzureOpenAI:
         """Build the chat client used to score natural-language answers."""
-        endpoint = _normalize_azure_endpoint(os.environ["AZURE_AI_FOUNDRY_ENDPOINT"])
+        endpoint = os.environ["AZURE_AI_FOUNDRY_ENDPOINT"]
         api_key = os.environ["AZURE_AI_FOUNDRY_API_KEY"]
         if endpoint.endswith("/openai/v1"):
             return OpenAI(base_url=endpoint, api_key=api_key)
@@ -170,7 +175,7 @@ def build_judge_model() -> DeepEvalBaseLLM:
     appends `/openai/deployments/{name}`. Classic Azure OpenAI endpoints use
     AzureOpenAIModel directly.
     """
-    endpoint = _normalize_azure_endpoint(os.environ["AZURE_AI_FOUNDRY_ENDPOINT"])
+    endpoint = os.environ["AZURE_AI_FOUNDRY_ENDPOINT"]
     deployment = os.environ.get("AZURE_AI_FOUNDRY_DEPLOYMENT") or "gpt-5.4-nano"
     api_key = os.environ["AZURE_AI_FOUNDRY_API_KEY"]
     if endpoint.endswith("/openai/v1"):

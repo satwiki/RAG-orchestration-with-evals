@@ -9,19 +9,18 @@ back to query_generator on syntax errors (capped at MAX_VALIDATION_RETRIES).
 from __future__ import annotations
 
 import os
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
-
-from utils.db import validate_sql_syntax
 from state import AgentState, QueryRecord
-from tools import execute_readonly_query
+from tools import execute_readonly_query, get_current_datetime
+from utils.db import validate_sql_syntax
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
@@ -40,7 +39,7 @@ _FORCED_FINAL_NOTE = (
 )
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_system_prompt(name: str) -> str:
     """Read a raw system prompt from the shared prompts directory."""
     return (_PROMPTS_PATH / f"{name}.md").read_text(encoding="utf-8").strip()
@@ -49,6 +48,7 @@ def _load_system_prompt(name: str) -> str:
 INTENT_SYSTEM_PROMPT = _load_system_prompt("intent-detector")
 QUERY_GENERATOR_SYSTEM_PROMPT = _load_system_prompt("query-generator")
 REPORT_BUILDER_SYSTEM_PROMPT = _load_system_prompt("report-builder")
+TEMPORAL_GUIDANCE_PROMPT = _load_system_prompt("temporal-guidance")
 
 
 class IntentDecision(BaseModel):
@@ -123,8 +123,13 @@ def _resolve_question(state: AgentState) -> str:
     return ""
 
 
+def _render_temporal_prompt(current_datetime: str | None = None, *, is_evaluation: bool = False) -> str:
+    """Render temporal guidance using the runtime clock tool."""
+    timestamp = current_datetime or get_current_datetime.invoke({"is_evaluation": is_evaluation})
+    return TEMPORAL_GUIDANCE_PROMPT.format(current_datetime=timestamp)
+
 def _summarize_history(history: list[QueryRecord]) -> str:
-    """Render executed queries and their outcomes as plain text for LLM grounding."""
+    """Render all executed query results as plain text for LLM grounding."""
     if not history:
         return "No queries executed yet."
     lines: list[str] = []
@@ -135,17 +140,24 @@ def _summarize_history(history: list[QueryRecord]) -> str:
         else:
             rows = record.get("rows") or []
             lines.append(f"  Rows returned: {len(rows)}")
-            lines.append(f"  Sample rows: {rows[:5]}")
+            lines.append(f"  Rows: {rows}")
     return "\n".join(lines)
 
 
 def intent_detector(state: AgentState) -> dict[str, Any]:
     """Classify the user question as allowed or blocked before any SQL is generated."""
     question = _resolve_question(state)
+    messages: list[Any] = [SystemMessage(content=INTENT_SYSTEM_PROMPT), HumanMessage(content=question)]
+    if state.get("task_context"):
+        messages.append(HumanMessage(content=f"Task-specific requirements:\n{state['task_context']}"))
     decision = _get_llm().with_structured_output(IntentDecision).invoke(
-        [SystemMessage(content=INTENT_SYSTEM_PROMPT), HumanMessage(content=question)]
+        messages
     )
-    blocked = not decision.allowed
+    explicit_write = any(
+        keyword in question.lower()
+        for keyword in ("insert ", "update ", "delete ", "drop ", "alter ", "create table", "modify data")
+    )
+    blocked = not decision.allowed and (explicit_write or not state.get("task_context"))
     update: dict[str, Any] = {
         "user_question": question,
         "intent": "blocked" if blocked else "allowed",
@@ -166,8 +178,14 @@ def query_generator(state: AgentState) -> dict[str, Any]:
                 schema=_load_schema_skill(),
             )
         ),
+        HumanMessage(content=_render_temporal_prompt(is_evaluation=bool(state.get("is_evaluation")))),
         HumanMessage(content=f"User question: {state['user_question']}"),
     ]
+    if state.get("task_context"):
+        prompt.append(HumanMessage(content=f"Task-specific requirements:\n{state['task_context']}"))
+    if state.get("required_output_columns"):
+        columns = ", ".join(state["required_output_columns"])
+        prompt.append(HumanMessage(content=f"Required output columns: {columns}."))
     history = state.get("query_history") or []
     if history:
         prompt.append(HumanMessage(content=f"Previously executed queries:\n{_summarize_history(history)}"))
@@ -185,9 +203,27 @@ def query_validator(state: AgentState) -> dict[str, Any]:
     """Check the generated SQL is read-only and syntactically valid without executing it."""
     error = validate_sql_syntax(state["query"])
     if error is None:
+        error = _validate_aggregation_contract(state["query"], state.get("task_context"))
+    if error is None:
         return {"query_validation": [], "validation_feedback": None, "retry_count": 0}
     retry_count = (state.get("retry_count") or 0) + 1
     return {"query_validation": [error], "validation_feedback": error, "retry_count": retry_count}
+
+
+def _validate_aggregation_contract(sql: str, task_context: str | None) -> str | None:
+    """Reject order-total joins that would multiply header values by line items."""
+    if not task_context or "order totals at order grain" not in task_context.lower():
+        return None
+    normalized = " ".join(sql.lower().split())
+    select_blocks = normalized.split(" select ")[1:]
+    for block in select_blocks:
+        block = block.split(" select ", 1)[0]
+        if "sum(o.total_amount)" in block and "join order_items" in block:
+            return (
+                "Aggregate orders.total_amount in an order-level CTE before joining order_items; "
+                "never sum order totals in the same SELECT block as raw line items."
+            )
+    return None
 
 
 def _route_after_validation(state: AgentState) -> str:
@@ -236,9 +272,15 @@ def report_builder(state: AgentState) -> dict[str, Any]:
                 forced_final_note=_FORCED_FINAL_NOTE if forced_final else "",
             ).rstrip()
         ),
+        HumanMessage(content=_render_temporal_prompt(is_evaluation=bool(state.get("is_evaluation")))),
         HumanMessage(content=f"User question: {state['user_question']}"),
         HumanMessage(content=f"Query history:\n{_summarize_history(state.get('query_history') or [])}"),
     ]
+    if state.get("task_context"):
+        prompt.insert(2, HumanMessage(content=f"Task-specific requirements:\n{state['task_context']}"))
+    if state.get("required_output_columns"):
+        columns = ", ".join(state["required_output_columns"])
+        prompt.insert(3, HumanMessage(content=f"Required output columns: {columns}."))
     decision = _get_llm().with_structured_output(ReportDecision).invoke(prompt)
     needs_more = bool(decision.needs_more_data) and not forced_final
     return {
@@ -294,5 +336,10 @@ agent = get_compiled_agent()
 
 def ask(question: str) -> str:
     """Run the workflow for a user question and return the final markdown answer."""
-    result = agent.invoke({"user_question": question, "messages": [HumanMessage(content=question)]})
+    result = agent.invoke(
+        {
+            "user_question": question,
+            "messages": [HumanMessage(content=question)],
+        }
+    )
     return result.get("final_answer", "")
