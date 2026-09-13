@@ -6,6 +6,14 @@ ms.date: 2026-09-13
 
 # Changelog
 
+## 0.3.4 - 2026-09-13
+
+### Added
+
+* Streamlit now includes an Evaluations tab that runs DeepEval from a button,
+  shows the groundtruth dataset in a read-only view, and lists previous result
+  files as expandable items.
+
 ## 0.3.3 - 2026-09-13
 
 * Reduced duplicate code in evals, and created new utils to promote reusability of common functionalities across the repo.

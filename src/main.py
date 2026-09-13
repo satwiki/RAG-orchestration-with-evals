@@ -11,8 +11,10 @@ Usage:
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +30,9 @@ EXIT_FAILURE = 1
 
 SRC_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SRC_DIR.parent
+GROUNDTRUTH_DIR = SRC_DIR / "evals" / "groundtruth"
+EVAL_RESULTS_DIR = SRC_DIR / "evals" / "results"
+DEEPEVAL_SCRIPT = SRC_DIR / "evals" / "run_deepeval.py"
 
 _SKIP_DIR_NAMES = frozenset(
     {
@@ -221,31 +226,51 @@ def _render_query_history(history: list[dict[str, Any]]) -> None:
                 st.dataframe(rows, use_container_width=True)
 
 
-def render_app(src_dir: Path = SRC_DIR) -> None:
-    """Render the Streamlit chat UI for the selected framework agent."""
-    st.set_page_config(page_title="E-commerce Analytics Agents", layout="wide")
-    st.title("E-commerce Analytics Assistant")
-    st.caption("Ask read-only questions about sales, customers, products, orders, and engagement.")
+def discover_groundtruth_datasets(groundtruth_dir: Path = GROUNDTRUTH_DIR) -> list[Path]:
+    """Return JSON groundtruth files in name order."""
+    if not groundtruth_dir.is_dir():
+        return []
+    return sorted(groundtruth_dir.glob("*.json"), key=lambda path: path.name.lower())
 
-    frameworks = discover_frameworks(src_dir)
-    if not frameworks:
-        st.error("No framework agents found under src/. Expected a folder with agent.py.")
-        return
 
-    options = {item.name: item for item in frameworks}
-    with st.sidebar:
-        st.header("Agent")
-        selected_name = st.selectbox(
-            "Framework",
-            options=list(options.keys()),
-            format_func=lambda name: f"{options[name].display_name} ({name})",
-        )
-        st.caption("Each option maps to a framework folder under src/.")
-        if st.button("Clear conversation"):
-            st.session_state[f"messages_{selected_name}"] = []
-            st.rerun()
+def list_evaluation_result_files(results_dir: Path = EVAL_RESULTS_DIR) -> list[Path]:
+    """Return previous DeepEval result files, newest first."""
+    if not results_dir.is_dir():
+        return []
+    return sorted(
+        results_dir.glob("deepeval-results-*.txt"),
+        key=lambda path: path.name,
+        reverse=True,
+    )
 
-    selected = options[selected_name]
+
+def run_deepeval_cli(
+    *,
+    framework: str,
+    dataset_path: Path | None = None,
+    skip_llm: bool = False,
+    repo_root: Path = REPO_ROOT,
+    script_path: Path = DEEPEVAL_SCRIPT,
+) -> subprocess.CompletedProcess[str]:
+    """Run ``src/evals/run_deepeval.py`` as a subprocess from the repository root."""
+    if not script_path.is_file():
+        raise FileNotFoundError(f"DeepEval runner not found: {script_path}")
+    command = [sys.executable, str(script_path), "--framework", framework]
+    if dataset_path is not None:
+        command.extend(["--dataset", str(dataset_path)])
+    if skip_llm:
+        command.append("--skip-llm")
+    return subprocess.run(
+        command,
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _render_chat_tab(selected: FrameworkSpec) -> None:
+    """Render the chat pane for the selected framework agent."""
     chat_key = f"messages_{selected.name}"
     if chat_key not in st.session_state:
         st.session_state[chat_key] = []
@@ -283,6 +308,123 @@ def render_app(src_dir: Path = SRC_DIR) -> None:
             error_text = f"The agent failed: {exc}"
             st.error(error_text)
             st.session_state[chat_key].append({"role": "assistant", "content": error_text})
+
+
+def _render_groundtruth_viewer(dataset_path: Path) -> None:
+    """Show a groundtruth JSON file as a read-only table and JSON view."""
+    payload = json.loads(dataset_path.read_text(encoding="utf-8"))
+    st.subheader("Metadata")
+    st.json(payload.get("metadata") or {}, expanded=False)
+    st.subheader("Samples")
+    st.dataframe(payload.get("samples") or [], use_container_width=True)
+    with st.expander("Full dataset JSON", expanded=False):
+        st.json(payload)
+
+
+def _render_latest_eval_output() -> None:
+    """Show stdout/stderr from the most recent UI-triggered DeepEval run."""
+    output = st.session_state.get("eval_run_output")
+    if not output:
+        return
+    st.subheader("Latest run")
+    st.caption(
+        f"Exit code: {output['returncode']} | dataset: {output['dataset']} | "
+        f"framework: {output['framework']}"
+    )
+    if output.get("stdout"):
+        st.code(output["stdout"], language="text")
+    if output.get("stderr"):
+        st.code(output["stderr"], language="text")
+
+
+def _render_previous_eval_results(results_dir: Path = EVAL_RESULTS_DIR) -> None:
+    """List previous result files as collapsed items that expand on click."""
+    result_files = list_evaluation_result_files(results_dir)
+    st.subheader("Previous runs")
+    if not result_files:
+        st.caption("No saved evaluation result files yet.")
+        return
+    for path in result_files:
+        with st.expander(path.name, expanded=False):
+            st.code(path.read_text(encoding="utf-8"), language="text")
+
+
+def _render_evals_tab(selected: FrameworkSpec, groundtruth_dir: Path = GROUNDTRUTH_DIR) -> None:
+    """Run DeepEval, view groundtruth, and inspect previous result files."""
+    st.caption("Run DeepEval from this page, inspect goldens, and open saved result files.")
+    datasets = discover_groundtruth_datasets(groundtruth_dir)
+    dataset_path = None
+    if datasets:
+        selected_name = st.selectbox(
+            "Groundtruth dataset",
+            options=[path.name for path in datasets],
+            key="eval_dataset_name",
+        )
+        dataset_path = next(path for path in datasets if path.name == selected_name)
+    else:
+        st.warning("No groundtruth dataset is available to evaluate.")
+
+    if st.checkbox("Show groundtruth dataset", value=False) and dataset_path is not None:
+        _render_groundtruth_viewer(dataset_path)
+
+    skip_llm = st.checkbox("Skip LLM judge (execution accuracy only)", value=False)
+    if st.button("Run DeepEval", disabled=dataset_path is None):
+        try:
+            with st.spinner("Running DeepEval..."):
+                completed = run_deepeval_cli(
+                    framework=selected.name,
+                    dataset_path=dataset_path,
+                    skip_llm=skip_llm,
+                )
+            st.session_state["eval_run_output"] = {
+                "returncode": completed.returncode,
+                "dataset": dataset_path.name if dataset_path else "",
+                "framework": selected.name,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+            }
+            if completed.returncode == 0:
+                st.success("DeepEval finished.")
+            else:
+                st.error(f"DeepEval exited with code {completed.returncode}.")
+        except Exception as exc:  # noqa: BLE001 - shown in the evaluations pane
+            logger.exception("DeepEval UI run failed")
+            st.error(f"DeepEval failed: {exc}")
+
+    _render_latest_eval_output()
+    _render_previous_eval_results()
+
+
+def render_app(src_dir: Path = SRC_DIR) -> None:
+    """Render the Streamlit chat UI and evaluations section."""
+    st.set_page_config(page_title="E-commerce Analytics Agents", layout="wide")
+    st.title("E-commerce Analytics Assistant")
+    st.caption("Ask read-only questions about sales, customers, products, orders, and engagement.")
+
+    frameworks = discover_frameworks(src_dir)
+    if not frameworks:
+        st.error("No framework agents found under src/. Expected a folder with agent.py.")
+        return
+
+    options = {item.name: item for item in frameworks}
+    with st.sidebar:
+        st.header("Agent")
+        selected_name = st.selectbox(
+            "Framework",
+            options=list(options.keys()),
+            format_func=lambda name: f"{options[name].display_name} ({name})",
+        )
+        st.caption("Each option maps to a framework folder under src/.")
+        if st.button("Clear conversation"):
+            st.session_state[f"messages_{selected_name}"] = []
+            st.rerun()
+
+    selected = options[selected_name]
+    chat_tab, evals_tab = st.tabs(["Chat", "Evaluations"])
+    with chat_tab:
+        _render_chat_tab(selected)
+    with evals_tab:
+        _render_evals_tab(selected)
 
 
 def main() -> int:

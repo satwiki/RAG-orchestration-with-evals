@@ -47,7 +47,7 @@ Use the following technologies in this repo. If you need to add another tech, as
 - **Adding skills**: If you add a new agent skill, add it under `src/skills` folder. Skills should be framework-agnostic as much as possible to promote reusability. Update the `design.md` in the relevant framework folder(s) to reflect the addition of the new skill and its usage. The skill should be designed to be framework-agnostic, and should contain only the specific logic, not how or when to call it. The calling logic should be in the framework-specific code.
 - **Evaluation Metrics**: Implement evaluation metrics that are relevant to the RAG application.
 - **Design Documents**: Each framework-related folder gets a `design.md`. For any new feature or significant change, modify the `design.md` and maintain a decision log to track the changes.
-- **Add tests**: For any new feature or significant change, add tests to the `tests/<framework>` directory.
-  - Ensure that the tests cover >80% of the code and edge cases.
-  - Add mock data for testing purposes in the `tests/<framework>` folder.
-- **Using imports**: Avoid optional imports. If a library is needed, it should be added to `requirements.txt` and installed in the virtual environment. Write imports only in the top-level scope of the module, not inside functions or classes.
+- **Add tests**: For any new feature or significant change, add tests to the `tests/<framework>/` directory.
+- **Always keep imports at the top**: Avoid optional imports and imports within methods.
+  - If a new library is needed, it should be added to `requirements.txt` and installed in the virtual environment.
+  - Write imports only in the top-level scope of the module, not inside functions or classes.

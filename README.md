@@ -32,12 +32,10 @@ Start the Streamlit application:
 streamlit run src/main.py
 ```
 
-The **Groundtruth and evals** tab in the UI lists every JSON dataset under
-`src/evals/groundtruth/`, displays metadata and sample goldens, and supports
-editing existing samples, adding samples, and creating new datasets in the
-same `metadata`/`samples` format. Dataset deletion is intentionally not
-available. The same tab can run DeepEval for the selected dataset and
-framework, with an optional execution-accuracy-only mode.
+The **Evaluations** tab in the UI runs `src/evals/run_deepeval.py` for the
+selected framework, shows the latest run output, and lists previous result
+files under `src/evals/results/`. Use **Show groundtruth dataset** to inspect
+the golden JSON in a read-only view.
 
 Run DeepEval against the ecommerce sales analytics goldens:
 
