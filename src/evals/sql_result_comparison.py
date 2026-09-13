@@ -1,45 +1,25 @@
-"""Read-only SQL execution and normalized result comparison for evaluation.
-
-This module is framework-agnostic. It does not import LangGraph or Microsoft
-Agent Framework code. The safety checks mirror the agent sandbox so generated
-SQL is scored under the same constraints.
-"""
+"""Normalized SQL result parsing and comparison for evaluation."""
 
 from __future__ import annotations
 
 import json
 import math
 import re
-import sqlite3
-from pathlib import Path
 from typing import Any
 
-_FORBIDDEN_KEYWORDS = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE|TRUNCATE|ATTACH|DETACH|PRAGMA|VACUUM)\b",
-    re.IGNORECASE,
-)
 _ORDER_BY = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
 _NUMERIC_STRING = re.compile(r"^-?\d+(\.\d+)?$")
 _MONTH_VALUE = re.compile(r"^(\d{4}-\d{2})(?:-01)?$")
-_DEFAULT_ROW_LIMIT = 10_000
 _NUMERIC_TOLERANCE = 0.01
 
-
-class QueryRejectedError(ValueError):
-    """Raised when a SQL statement fails the read-only safety check."""
-
-
-def assert_read_only(sql: str) -> None:
-    """Raise QueryRejectedError unless `sql` is a single read-only SELECT/CTE."""
-    statement = sql.strip().rstrip(";")
-    if not statement:
-        raise QueryRejectedError("Empty SQL statement.")
-    if ";" in statement:
-        raise QueryRejectedError("Only a single SQL statement is allowed.")
-    if not re.match(r"^\s*(SELECT|WITH)\b", statement, re.IGNORECASE):
-        raise QueryRejectedError("Only SELECT (or WITH ... SELECT) statements are allowed.")
-    if _FORBIDDEN_KEYWORDS.search(statement):
-        raise QueryRejectedError("Statement contains a disallowed write/DDL keyword.")
+_COLUMN_ALIASES = {
+    "product_sku": "sku",
+    "product_name": "name",
+    "product_category": "category",
+    "sales_amount": "product_revenue",
+    "gross_sales_amount": "product_revenue",
+    "delivered_order_revenue": "order_revenue",
+}
 
 
 def sql_requires_row_order(sql: str) -> bool:
@@ -66,20 +46,6 @@ def parse_result_payload(payload: Any) -> list[dict[str, Any]]:
     raise ValueError(f"Unsupported result payload type: {type(payload)!r}")
 
 
-def execute_readonly_query(
-    sql: str,
-    db_path: Path,
-    row_limit: int = _DEFAULT_ROW_LIMIT,
-) -> list[dict[str, Any]]:
-    """Execute a validated read-only query and return rows as dictionaries."""
-    assert_read_only(sql)
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(sql.strip().rstrip(";"))
-        rows = cursor.fetchmany(row_limit)
-        return [dict(row) for row in rows]
-
-
 def _normalize_value(value: Any) -> Any:
     """Normalize a cell for comparison, including numeric tolerance."""
     if value is None:
@@ -104,24 +70,6 @@ def _normalize_value(value: Any) -> Any:
     return value
 
 
-def normalize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Lower-case keys and normalize cell values."""
-    normalized: list[dict[str, Any]] = []
-    for row in rows:
-        normalized.append(_canonicalize_row(row))
-    return normalized
-
-
-_COLUMN_ALIASES = {
-    "product_sku": "sku",
-    "product_name": "name",
-    "product_category": "category",
-    "sales_amount": "product_revenue",
-    "gross_sales_amount": "product_revenue",
-    "delivered_order_revenue": "order_revenue",
-}
-
-
 def _canonicalize_row(row: dict[str, Any]) -> dict[str, Any]:
     """Normalize common semantic aliases while retaining required result fields."""
     canonical = {
@@ -131,6 +79,11 @@ def _canonicalize_row(row: dict[str, Any]) -> dict[str, Any]:
     if "customer_name" not in canonical and {"first_name", "last_name"} <= canonical.keys():
         canonical["customer_name"] = f"{canonical['first_name']} {canonical['last_name']}"
     return canonical
+
+
+def normalize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Lower-case keys and normalize cell values."""
+    return [_canonicalize_row(row) for row in rows]
 
 
 def _values_equal(left: Any, right: Any) -> bool:
@@ -160,16 +113,7 @@ def results_equivalent(
     *,
     order_matters: bool,
 ) -> tuple[bool, str]:
-    """Return whether two result sets match after normalization.
-
-    Args:
-        actual_rows: Rows produced by generated SQL.
-        expected_rows: Rows produced by gold SQL or stored gold_result.
-        order_matters: When True, row order must match.
-
-    Returns:
-        A (matched, reason) tuple.
-    """
+    """Return whether two result sets match after normalization."""
     actual = normalize_rows(actual_rows)
     expected = normalize_rows(expected_rows)
     if len(actual) != len(expected):

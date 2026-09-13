@@ -229,14 +229,11 @@ def build_test_case(sample: GroundtruthSample, framework: str) -> LLMTestCase:
     )
     metadata = dict(golden.additional_metadata or {})
     metadata["generated_sql"] = run.generated_sql
-    metadata["generated_sql_history"] = [
-        record.get("sql") for record in run.query_history if record.get("sql")
-    ]
     metadata["query_history"] = run.query_history
     metadata["blocked"] = run.blocked
     metadata["intent_reason"] = run.intent_reason
     metadata["query_count"] = len(run.query_history)
-    logger.debug("%s generated SQL history: %s", sample.id, metadata["generated_sql_history"])
+    logger.debug("%s query history: %s", sample.id, run.query_history)
     return LLMTestCase(
         input=sample.question,
         actual_output=run.final_answer,

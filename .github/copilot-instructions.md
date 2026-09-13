@@ -7,8 +7,8 @@ This is a repo to contain code for various RAG use cases, with a focus on evalua
 - `src/`: Contains the main source code for the RAG samples.
   - `notebooks/`: Jupyter notebooks where I experiment. Do not refer to these unless explicitely sent as part of a request.
   - `local_db/`: Contains schema and seeding for local SQLite databases as source of truth and the db.
-  - `langgraph/`: Contains code written on langchain-langgraph ecosystem.
-  - `maf/`: Contains code written on Microsoft Agent Framework ecosystem.
+  - `agentic-langgraph/`: Contains code written on the LangChain and LangGraph ecosystem.
+  - `agentic-maf/`: Contains code written on the Microsoft Agent Framework ecosystem.
   - `evals/`: Contains code for evaluation of RAG outputs, including metrics and evaluation scripts.
     - `ground_truth/`: Contains ground truth data generator and seeding for evaluation.
   - `skills/`: Contains reusable skills that can be used across different frameworks code.
@@ -30,6 +30,7 @@ Use the following technologies in this repo. If you need to add another tech, as
 - **Dependency Management**: Use `pip` and `requirements.txt` for managing dependencies. Avoid using `conda` or other package managers.
 - **Versioning**: Use semantic versioning for the features under each framework. Update the version in the `changelog.md` file in the root of the repo for any new feature or significant change.
 - **Agent Design**: When writing Agents or multi-agent setups, follow the framework-specific guidelines and best practices.
+  - Framework directories are intentionally hyphenated. Never create or import `src.langgraph` or `src.maf`; use the existing dynamic-loading pattern in `src/main.py` and `tests/conftest.py`.
   - If not specified in prompt, ask the user following questions before designing the Agent:
     1. What is the goal of the Agent?
     2. What are the inputs and outputs of the Agent?
@@ -40,11 +41,10 @@ Use the following technologies in this repo. If you need to add another tech, as
   - **Examples**: Running SQL queries on the SQLite database, performing calculations (eg revenue, profit, engagement conversion rate etc.), verifying SQL query in syntactic way, querying vector index etc.
   - **Never** package non-deterministic functions, decision-making, sub-agent routing, hand-off as tools for Agents.
   - **Use** framework-specific syntaxes to create tools, preferably in `src/<framework>/tools.py` file.
-- **Reusable Components**: Create reusable components (not related to tools for Agents) for common tasks under `src/<framework>/utils` folder that can be shared across the project and different frameworks (langchain and MAF).
+- **Reusable Components**: Create reusable components (not related to tools for Agents) for common tasks under `src/utils` folder and import the relevant methods to scripts inside `src/<framework>/utils` folder. These utilities should be designed in a way that they can be shared across the project, ideally for both agent development and evaluation, and different frameworks (langchain and MAF). Primary purpose is to promote code reuse across the repo and maintainability.
   -  Make sure that you are not importing any framework eg langchain or MAF specific code inside `utils/` folder.
   - Use separate of concerns to create appropriate utility functions/script eg `db.py` to handle db related functions etc.
-- **Separation of Concerns**: Keep the code modular and organized. Do not mix multiple functionalities in a single method or class. Add clear docstrings and comments to explain the purpose of each component.
-- **Adding skills**: If you add a new skill, add it under `src/skills` folder. Skills should be framework-agnostic as much as possible. Update the `design.md` in the relevant framework folder(s) to reflect the addition of the new skill and its usage. The skill should be designed to be framework-agnostic, and should contain only the specific logic, not how or when to call it. The calling logic should be in the framework-specific code.
+- **Adding skills**: If you add a new agent skill, add it under `src/skills` folder. Skills should be framework-agnostic as much as possible to promote reusability. Update the `design.md` in the relevant framework folder(s) to reflect the addition of the new skill and its usage. The skill should be designed to be framework-agnostic, and should contain only the specific logic, not how or when to call it. The calling logic should be in the framework-specific code.
 - **Evaluation Metrics**: Implement evaluation metrics that are relevant to the RAG application.
 - **Design Documents**: Each framework-related folder gets a `design.md`. For any new feature or significant change, modify the `design.md` and maintain a decision log to track the changes.
 - **Add tests**: For any new feature or significant change, add tests to the `tests/<framework>` directory.

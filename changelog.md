@@ -6,6 +6,11 @@ ms.date: 2026-09-13
 
 # Changelog
 
+## 0.3.3 - 2026-09-13
+
+* Reduced duplicate code in evals, and created new utils to promote reusability of common functionalities across the repo.
+
+
 ## 0.3.2 - 2026-09-13
 
 ### Fixed

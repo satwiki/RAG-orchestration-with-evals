@@ -12,15 +12,28 @@ from deepeval.models import AzureOpenAIModel, DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from openai import AzureOpenAI, OpenAI
 
-from sql_sandbox import (
-    QueryRejectedError,
-    execute_readonly_query,
+from src.utils.db import QueryRejectedError, run_read_only_query
+from sql_result_comparison import (
     parse_result_payload,
     results_equivalent,
     sql_requires_row_order,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _last_successful_rows(metadata: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """Return rows captured for the agent's last successful SQL query."""
+    history = metadata.get("query_history")
+    if not isinstance(history, list):
+        return None
+    for record in reversed(history):
+        if not isinstance(record, dict):
+            continue
+        sql = str(record.get("sql") or "").strip()
+        if sql and not record.get("error") and record.get("rows") is not None:
+            return parse_result_payload(record["rows"])
+    return None
 
 
 class SqlExecutionAccuracyMetric(BaseMetric):
@@ -43,15 +56,8 @@ class SqlExecutionAccuracyMetric(BaseMetric):
         self.error: str | None = None
 
     def measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
-        """Execute generated SQL and compare the result set to gold SQL."""
+        """Compare captured agent rows with rows from live gold SQL."""
         metadata = test_case.additional_metadata or {}
-        generated_sql = (metadata.get("generated_sql") or "").strip()
-        generated_sql_history = [
-            str(sql).strip()
-            for sql in metadata.get("generated_sql_history", [])
-            if str(sql).strip()
-        ]
-        candidates = list(dict.fromkeys(generated_sql_history + ([generated_sql] if generated_sql else [])))
         gold_sql = (metadata.get("gold_sql") or "").strip()
         stored_gold_result = metadata.get("gold_result")
 
@@ -62,17 +68,20 @@ class SqlExecutionAccuracyMetric(BaseMetric):
             return self.score
 
         try:
-            expected_rows = execute_readonly_query(gold_sql, self.db_path)
+            expected_rows = run_read_only_query(
+                gold_sql,
+                self.db_path,
+            )
             expected_source = "live gold SQL"
         except QueryRejectedError as exc:
             self.score = 1.0
             self.reason = (
-                f"Gold SQL is not sandbox-executable ({exc}). "
+                f"Gold SQL is not read-only executable ({exc}). "
                 "Execution accuracy is skipped; answer correctness still applies."
             )
             self.success = True
             return self.score
-        except Exception as exc:  # noqa: BLE001 - metric must record the failure
+        except Exception as exc:
             try:
                 expected_rows = parse_result_payload(stored_gold_result)
                 expected_source = "stored gold_result (live gold SQL failed)"
@@ -83,38 +92,21 @@ class SqlExecutionAccuracyMetric(BaseMetric):
                 self.success = False
                 return self.score
 
-        if not candidates:
+        actual_rows = _last_successful_rows(metadata)
+        if actual_rows is None:
             self.score = 0.0
-            self.reason = "Agent did not produce a successful SQL statement."
+            self.reason = "Agent did not capture rows for a successful SQL statement."
             self.success = False
             return self.score
 
-        failure_reasons: list[str] = []
-        for candidate in candidates:
-            try:
-                actual_rows = execute_readonly_query(candidate, self.db_path)
-            except QueryRejectedError as exc:
-                failure_reasons.append(f"Generated SQL was rejected: {exc}")
-                continue
-            except Exception as exc:  # noqa: BLE001 - metric must record the failure
-                failure_reasons.append(f"Generated SQL failed to execute: {exc}")
-                continue
-
-            matched, compare_reason = results_equivalent(
-                actual_rows,
-                expected_rows,
-                order_matters=sql_requires_row_order(gold_sql),
-            )
-            if matched:
-                self.score = 1.0
-                self.reason = f"{compare_reason} (expected from {expected_source})."
-                self.success = True
-                return self.score
-            failure_reasons.append(compare_reason)
-
-        self.score = 0.0
-        self.reason = f"{failure_reasons[-1]} (expected from {expected_source})."
-        self.success = False
+        matched, compare_reason = results_equivalent(
+            actual_rows,
+            expected_rows,
+            order_matters=sql_requires_row_order(gold_sql),
+        )
+        self.score = 1.0 if matched else 0.0
+        self.reason = f"{compare_reason} (expected from {expected_source})."
+        self.success = matched
         return self.score
 
     async def a_measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
