@@ -1,4 +1,5 @@
 # RAG orchestration and Azure AI Foundry
+agent-framework>=1.17.0
 langchain
 langchain-core
 langchain-community
@@ -34,6 +35,7 @@ tenacity
 
 # Development and notebooks
 pytest
+pre-commit
 ruff
 tqdm
 ipykernel
