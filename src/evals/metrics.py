@@ -87,7 +87,9 @@ class SqlExecutionAccuracyMetric(BaseMetric):
             try:
                 expected_rows = parse_result_payload(stored_gold_result)
                 expected_source = "stored gold_result (live gold SQL failed)"
-                logger.warning("Live gold SQL failed (%s); using stored gold_result.", exc)
+                logger.warning(
+                    "Live gold SQL failed (%s); using stored gold_result.", exc
+                )
             except Exception as parse_exc:  # noqa: BLE001
                 self.score = 0.0
                 self.reason = f"Unable to obtain gold rows: {exc}; {parse_exc}"
@@ -111,7 +113,9 @@ class SqlExecutionAccuracyMetric(BaseMetric):
         self.success = matched
         return self.score
 
-    async def a_measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
+    async def a_measure(
+        self, test_case: LLMTestCase, *args: Any, **kwargs: Any
+    ) -> float:
         """Run the synchronous measure path; this metric is deterministic."""
         return self.measure(test_case, *args, **kwargs)
 
@@ -145,7 +149,9 @@ class SchemaAdherenceMetric(BaseMetric):
 
     def measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
         """Return one when generated SQL is executable against the evaluation schema."""
-        sql = str((test_case.additional_metadata or {}).get("generated_sql") or "").strip()
+        sql = str(
+            (test_case.additional_metadata or {}).get("generated_sql") or ""
+        ).strip()
         if not sql:
             self.score = 0.0
             self.reason = "Agent did not generate SQL."
@@ -157,7 +163,9 @@ class SchemaAdherenceMetric(BaseMetric):
         self.success = self.score >= self.threshold
         return self.score
 
-    async def a_measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
+    async def a_measure(
+        self, test_case: LLMTestCase, *args: Any, **kwargs: Any
+    ) -> float:
         """Run the synchronous schema validation path."""
         return self.measure(test_case, *args, **kwargs)
 
@@ -178,7 +186,9 @@ class SchemaAdherenceMetric(BaseMetric):
 class AnswerFaithfulnessMetric(BaseMetric):
     """Judge whether the final answer is supported by the agent's SQL result rows."""
 
-    def __init__(self, model: DeepEvalBaseLLM | None = None, threshold: float = 0.7) -> None:
+    def __init__(
+        self, model: DeepEvalBaseLLM | None = None, threshold: float = 0.7
+    ) -> None:
         """Configure the LLM judge used for answer-to-result grounding."""
         self._metric = GEval(
             name="Answer Faithfulness",
@@ -222,13 +232,17 @@ class AnswerFaithfulnessMetric(BaseMetric):
             return self.score
 
         faithfulness_case = copy.copy(test_case)
-        faithfulness_case.retrieval_context = [json.dumps(rows, sort_keys=True, default=str)]
+        faithfulness_case.retrieval_context = [
+            json.dumps(rows, sort_keys=True, default=str)
+        ]
         self.score = self._metric.measure(faithfulness_case, *args, **kwargs)
         self.reason = self._metric.reason
         self.success = self._metric.is_successful()
         return self.score
 
-    async def a_measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
+    async def a_measure(
+        self, test_case: LLMTestCase, *args: Any, **kwargs: Any
+    ) -> float:
         """Run the synchronous faithfulness judge."""
         return self.measure(test_case, *args, **kwargs)
 
@@ -245,6 +259,7 @@ class AnswerFaithfulnessMetric(BaseMetric):
         """Human-readable metric name shown in DeepEval output."""
         return "Answer Faithfulness"
 
+
 class FoundryChatJudge(DeepEvalBaseLLM):
     """DeepEval judge that uses the same Foundry or Azure OpenAI settings as the agent."""
 
@@ -257,7 +272,9 @@ class FoundryChatJudge(DeepEvalBaseLLM):
         return AzureOpenAI(
             azure_endpoint=endpoint,
             api_key=api_key,
-            api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
+            api_version=os.environ.get(
+                "AZURE_OPENAI_API_VERSION", "2024-12-01-preview"
+            ),
         )
 
     def generate(self, prompt: str) -> str:
@@ -295,7 +312,9 @@ def build_judge_model() -> DeepEvalBaseLLM:
         model_name=deployment,
         deployment_name=deployment,
         azure_openai_api_key=api_key,
-        openai_api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
+        openai_api_version=os.environ.get(
+            "AZURE_OPENAI_API_VERSION", "2024-12-01-preview"
+        ),
         azure_endpoint=endpoint,
         temperature=0,
     )

@@ -53,7 +53,9 @@ def load_framework_agent_module(framework_path: Path) -> ModuleType:
     _ensure_on_sys_path(framework_path)
     _ensure_on_sys_path(framework_path.parent)
     resolved = framework_path.resolve()
-    module_name = f"eval_agent_{framework_path.name.replace('-', '_')}_{abs(hash(str(resolved)))}"
+    module_name = (
+        f"eval_agent_{framework_path.name.replace('-', '_')}_{abs(hash(str(resolved)))}"
+    )
     existing = sys.modules.get(module_name)
     if existing is not None:
         return existing
@@ -131,4 +133,6 @@ def invoke_agent(
             generated_sql=None,
         )
 
-    raise AttributeError(f"{framework_name} agent.py must expose ask() or get_compiled_agent().")
+    raise AttributeError(
+        f"{framework_name} agent.py must expose ask() or get_compiled_agent()."
+    )

@@ -86,7 +86,9 @@ class EvaluationRunSummary:
     metric_results: list[EvaluationMetricResult]
 
 
-def load_metric_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, dict[str, object]]:
+def load_metric_config(
+    path: Path = DEFAULT_CONFIG_PATH,
+) -> dict[str, dict[str, object]]:
     """Load enabled metric settings keyed by their display name."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     raw_metrics = payload.get("metrics")

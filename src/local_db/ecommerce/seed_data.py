@@ -465,7 +465,10 @@ def _format_date(value: date) -> str:
 
 def generate_categories() -> list[CategoryRecord]:
     """Return the fixed product category catalog."""
-    return [CategoryRecord(name=name, description=description) for name, description in CATEGORIES]
+    return [
+        CategoryRecord(name=name, description=description)
+        for name, description in CATEGORIES
+    ]
 
 
 def generate_products(
@@ -509,7 +512,9 @@ def generate_products(
             used_names.add(product_name)
 
             brand = brands[created_count % len(brands)]
-            sku_token = _stable_hash_int(category_name, product_name, brand) % 10_000_000
+            sku_token = (
+                _stable_hash_int(category_name, product_name, brand) % 10_000_000
+            )
             sku = f"{category_name[:3].upper()}-{sku_token:07d}"
 
             base_price = {
@@ -667,15 +672,25 @@ def generate_orders(
         order_dt = datetime.combine(
             order_day,
             datetime.min.time(),
-        ) + timedelta(hours=rng.randint(7, 22), minutes=rng.randint(0, 59), seconds=rng.randint(0, 59))
+        ) + timedelta(
+            hours=rng.randint(7, 22),
+            minutes=rng.randint(0, 59),
+            seconds=rng.randint(0, 59),
+        )
 
-        item_count = rng.choices([1, 2, 3, 4, 5], weights=[0.42, 0.28, 0.18, 0.08, 0.04], k=1)[0]
-        selected_products = rng.sample(active_products, k=min(item_count, len(active_products)))
+        item_count = rng.choices(
+            [1, 2, 3, 4, 5], weights=[0.42, 0.28, 0.18, 0.08, 0.04], k=1
+        )[0]
+        selected_products = rng.sample(
+            active_products, k=min(item_count, len(active_products))
+        )
         items: list[OrderItemRecord] = []
         subtotal = 0.0
 
         for product in selected_products:
-            quantity = rng.choices([1, 2, 3, 4], weights=[0.62, 0.24, 0.10, 0.04], k=1)[0]
+            quantity = rng.choices([1, 2, 3, 4], weights=[0.62, 0.24, 0.10, 0.04], k=1)[
+                0
+            ]
             # Small historical price drift around the current catalog price.
             drift = rng.uniform(-0.08, 0.12)
             unit_price = round(max(0.99, product.unit_price * (1.0 + drift)), 2)
@@ -690,17 +705,23 @@ def generate_orders(
                 )
             )
 
-        shipping_amount = 0.0 if subtotal >= 75 else round(rng.choice([4.99, 6.99, 9.99]), 2)
+        shipping_amount = (
+            0.0 if subtotal >= 75 else round(rng.choice([4.99, 6.99, 9.99]), 2)
+        )
         discount_amount = 0.0
         if rng.random() < 0.18:
-            discount_amount = round(min(subtotal * rng.uniform(0.05, 0.20), subtotal * 0.25), 2)
+            discount_amount = round(
+                min(subtotal * rng.uniform(0.05, 0.20), subtotal * 0.25), 2
+            )
 
         taxable = max(subtotal - discount_amount, 0.0)
         tax_amount = round(taxable * rng.uniform(0.05, 0.1025), 2)
         total_amount = round(taxable + tax_amount + shipping_amount, 2)
 
         status = rng.choices(ORDER_STATUSES, weights=ORDER_STATUS_WEIGHTS, k=1)[0]
-        payment_method = rng.choices(PAYMENT_METHODS, weights=PAYMENT_METHOD_WEIGHTS, k=1)[0]
+        payment_method = rng.choices(
+            PAYMENT_METHODS, weights=PAYMENT_METHOD_WEIGHTS, k=1
+        )[0]
         shipping_city, shipping_state = rng.choice(US_LOCATIONS)
 
         order_number = f"ORD-{order_dt.strftime('%Y%m%d')}-{index + 1:05d}"
@@ -786,7 +807,9 @@ def generate_product_engagement(
 
             if ordered_units > 0:
                 # Higher demand days get more product-page traffic and dwell time.
-                base_clicks = int(round(ordered_units * rng.uniform(8.0, 18.0) * product_bias))
+                base_clicks = int(
+                    round(ordered_units * rng.uniform(8.0, 18.0) * product_bias)
+                )
                 noise_clicks = rng.randint(2, 12)
                 click_count = max(ordered_units + 1, base_clicks + noise_clicks)
 
@@ -795,7 +818,9 @@ def generate_product_engagement(
                     int(round(click_count * rng.uniform(0.55, 0.85))),
                 )
                 # Average session length grows mildly with demand (seconds).
-                avg_seconds = rng.uniform(45.0, 180.0) + ordered_units * rng.uniform(20.0, 90.0)
+                avg_seconds = rng.uniform(45.0, 180.0) + ordered_units * rng.uniform(
+                    20.0, 90.0
+                )
                 time_spent_seconds = max(
                     view_sessions * 15,
                     int(round(view_sessions * avg_seconds * weekend_boost)),
@@ -840,18 +865,27 @@ def summarize_seed(
 ) -> dict[str, object]:
     """Build a compact summary for logging and verification."""
     order_items = sum(len(order.items) for order in orders)
-    order_dates = [datetime.strptime(order.order_date, "%Y-%m-%d %H:%M:%S").date() for order in orders]
+    order_dates = [
+        datetime.strptime(order.order_date, "%Y-%m-%d %H:%M:%S").date()
+        for order in orders
+    ]
     products_by_category: dict[str, int] = {}
     for product in products:
-        products_by_category[product.category_name] = products_by_category.get(product.category_name, 0) + 1
+        products_by_category[product.category_name] = (
+            products_by_category.get(product.category_name, 0) + 1
+        )
 
     status_counts: dict[str, int] = {status: 0 for status in ORDER_STATUSES}
     for order in orders:
         status_counts[order.status] = status_counts.get(order.status, 0) + 1
 
     fulfilled_orders = status_counts.get("delivered", 0)
-    non_cancelled = sum(count for status, count in status_counts.items() if status != "cancelled")
-    fulfillment_rate = round(fulfilled_orders / non_cancelled, 4) if non_cancelled else 0.0
+    non_cancelled = sum(
+        count for status, count in status_counts.items() if status != "cancelled"
+    )
+    fulfillment_rate = (
+        round(fulfilled_orders / non_cancelled, 4) if non_cancelled else 0.0
+    )
 
     engagement_rows = engagement or []
     total_clicks = sum(row.click_count for row in engagement_rows)
@@ -861,7 +895,9 @@ def summarize_seed(
     return {
         "categories": len(categories),
         "products": len(products),
-        "products_per_category_min": min(products_by_category.values()) if products_by_category else 0,
+        "products_per_category_min": min(products_by_category.values())
+        if products_by_category
+        else 0,
         "customers": len(customers),
         "orders": len(orders),
         "order_items": order_items,
@@ -870,7 +906,9 @@ def summarize_seed(
         "fulfillment_rate": fulfillment_rate,
         "order_date_min": min(order_dates).isoformat() if order_dates else None,
         "order_date_max": max(order_dates).isoformat() if order_dates else None,
-        "order_span_days": (max(order_dates) - min(order_dates)).days if order_dates else 0,
+        "order_span_days": (max(order_dates) - min(order_dates)).days
+        if order_dates
+        else 0,
         "revenue_estimate": round(
             sum(
                 order.total_amount
@@ -885,7 +923,9 @@ def summarize_seed(
     }
 
 
-def monthly_order_buckets(orders: list[OrderRecord]) -> Iterator[tuple[str, int, float]]:
+def monthly_order_buckets(
+    orders: list[OrderRecord],
+) -> Iterator[tuple[str, int, float]]:
     """Yield monthly order counts and revenue for quick analytics smoke checks."""
     buckets: dict[str, list[float]] = {}
     for order in orders:

@@ -22,6 +22,7 @@ class AgentState(TypedDict, total=False):
     Core fields are shared across nodes. Optional routing and reporting fields
     support the multi-agent analytics workflow.
     """
+
     # Conversation and shared workflow fields
     messages: Annotated[list[Any], add_messages]
     query: str | None

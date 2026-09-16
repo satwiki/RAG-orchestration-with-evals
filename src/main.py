@@ -108,12 +108,20 @@ def discover_frameworks(src_dir: Path = SRC_DIR) -> list[FrameworkSpec]:
     if not src_dir.is_dir():
         return frameworks
     for child in sorted(src_dir.iterdir(), key=lambda item: item.name.lower()):
-        if not child.is_dir() or child.name in _SKIP_DIR_NAMES or child.name.startswith("."):
+        if (
+            not child.is_dir()
+            or child.name in _SKIP_DIR_NAMES
+            or child.name.startswith(".")
+        ):
             continue
         if not (child / "agent.py").is_file():
             continue
-        display_name = _FRAMEWORK_LABELS.get(child.name, child.name.replace("-", " ").title())
-        frameworks.append(FrameworkSpec(name=child.name, path=child, display_name=display_name))
+        display_name = _FRAMEWORK_LABELS.get(
+            child.name, child.name.replace("-", " ").title()
+        )
+        frameworks.append(
+            FrameworkSpec(name=child.name, path=child, display_name=display_name)
+        )
     return frameworks
 
 
@@ -143,7 +151,9 @@ def load_framework_agent_module(framework_dir: Path) -> ModuleType:
     _ensure_on_sys_path(framework_dir.parent)
 
     resolved = framework_dir.resolve()
-    module_name = f"ui_agent_{framework_dir.name.replace('-', '_')}_{abs(hash(str(resolved)))}"
+    module_name = (
+        f"ui_agent_{framework_dir.name.replace('-', '_')}_{abs(hash(str(resolved)))}"
+    )
     existing = sys.modules.get(module_name)
     if existing is not None:
         return existing
@@ -224,7 +234,9 @@ def _render_query_history(history: list[dict[str, Any]]) -> None:
                 st.dataframe(rows, use_container_width=True)
 
 
-def discover_groundtruth_datasets(groundtruth_dir: Path = GROUNDTRUTH_DIR) -> list[Path]:
+def discover_groundtruth_datasets(
+    groundtruth_dir: Path = GROUNDTRUTH_DIR,
+) -> list[Path]:
     """Return JSON groundtruth files in name order."""
     if not groundtruth_dir.is_dir():
         return []
@@ -305,7 +317,9 @@ def _render_chat_tab(selected: FrameworkSpec) -> None:
             logger.exception("Agent invocation failed for %s", selected.name)
             error_text = f"The agent failed: {exc}"
             st.error(error_text)
-            st.session_state[chat_key].append({"role": "assistant", "content": error_text})
+            st.session_state[chat_key].append(
+                {"role": "assistant", "content": error_text}
+            )
 
 
 def _render_groundtruth_viewer(dataset_path: Path) -> None:
@@ -347,9 +361,13 @@ def _render_previous_eval_results(results_dir: Path = EVAL_RESULTS_DIR) -> None:
             st.code(path.read_text(encoding="utf-8"), language="text")
 
 
-def _render_evals_tab(selected: FrameworkSpec, groundtruth_dir: Path = GROUNDTRUTH_DIR) -> None:
+def _render_evals_tab(
+    selected: FrameworkSpec, groundtruth_dir: Path = GROUNDTRUTH_DIR
+) -> None:
     """Run DeepEval, view groundtruth, and inspect previous result files."""
-    st.caption("Run DeepEval from this page, inspect goldens, and open saved result files.")
+    st.caption(
+        "Run DeepEval from this page, inspect goldens, and open saved result files."
+    )
     datasets = discover_groundtruth_datasets(groundtruth_dir)
     dataset_path = None
     if datasets:
@@ -362,7 +380,10 @@ def _render_evals_tab(selected: FrameworkSpec, groundtruth_dir: Path = GROUNDTRU
     else:
         st.warning("No groundtruth dataset is available to evaluate.")
 
-    if st.checkbox("Show groundtruth dataset", value=False) and dataset_path is not None:
+    if (
+        st.checkbox("Show groundtruth dataset", value=False)
+        and dataset_path is not None
+    ):
         _render_groundtruth_viewer(dataset_path)
 
     skip_llm = st.checkbox("Skip LLM judge (execution accuracy only)", value=False)
@@ -397,11 +418,15 @@ def render_app(src_dir: Path = SRC_DIR) -> None:
     """Render the Streamlit chat UI and evaluations section."""
     st.set_page_config(page_title="E-commerce Analytics Agents", layout="wide")
     st.title("E-commerce Analytics Assistant")
-    st.caption("Ask read-only questions about sales, customers, products, orders, and engagement.")
+    st.caption(
+        "Ask read-only questions about sales, customers, products, orders, and engagement."
+    )
 
     frameworks = discover_frameworks(src_dir)
     if not frameworks:
-        st.error("No framework agents found under src/. Expected a folder with agent.py.")
+        st.error(
+            "No framework agents found under src/. Expected a folder with agent.py."
+        )
         return
 
     options = {item.name: item for item in frameworks}

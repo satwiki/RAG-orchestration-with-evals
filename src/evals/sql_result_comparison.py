@@ -76,8 +76,13 @@ def _canonicalize_row(row: dict[str, Any]) -> dict[str, Any]:
         _COLUMN_ALIASES.get(str(key).lower(), str(key).lower()): _normalize_value(value)
         for key, value in row.items()
     }
-    if "customer_name" not in canonical and {"first_name", "last_name"} <= canonical.keys():
-        canonical["customer_name"] = f"{canonical['first_name']} {canonical['last_name']}"
+    if (
+        "customer_name" not in canonical
+        and {"first_name", "last_name"} <= canonical.keys()
+    ):
+        canonical["customer_name"] = (
+            f"{canonical['first_name']} {canonical['last_name']}"
+        )
     return canonical
 
 
@@ -117,7 +122,10 @@ def results_equivalent(
     actual = normalize_rows(actual_rows)
     expected = normalize_rows(expected_rows)
     if len(actual) != len(expected):
-        return False, f"Row count mismatch: actual={len(actual)} expected={len(expected)}"
+        return (
+            False,
+            f"Row count mismatch: actual={len(actual)} expected={len(expected)}",
+        )
     if not actual:
         return True, "Both results are empty."
 
@@ -130,7 +138,9 @@ def results_equivalent(
         actual = [{key: row[key] for key in expected_columns} for row in actual]
 
     if order_matters:
-        for index, (actual_row, expected_row) in enumerate(zip(actual, expected, strict=True)):
+        for index, (actual_row, expected_row) in enumerate(
+            zip(actual, expected, strict=True)
+        ):
             if not _rows_equal(actual_row, expected_row):
                 return False, f"Row {index} differs after ORDER BY comparison."
         return True, "Rows match in order."
@@ -138,10 +148,17 @@ def results_equivalent(
     unmatched = list(expected)
     for actual_row in actual:
         found_index = next(
-            (index for index, expected_row in enumerate(unmatched) if _rows_equal(actual_row, expected_row)),
+            (
+                index
+                for index, expected_row in enumerate(unmatched)
+                if _rows_equal(actual_row, expected_row)
+            ),
             None,
         )
         if found_index is None:
-            return False, "A generated row has no matching gold row when order is ignored."
+            return (
+                False,
+                "A generated row has no matching gold row when order is ignored.",
+            )
         unmatched.pop(found_index)
     return True, "Rows match regardless of order."

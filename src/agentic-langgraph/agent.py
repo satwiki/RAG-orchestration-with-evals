@@ -54,24 +54,35 @@ TEMPORAL_GUIDANCE_PROMPT = _load_system_prompt("temporal-guidance")
 class IntentDecision(BaseModel):
     """Gatekeeper decision on whether a user question may proceed."""
 
-    allowed: bool = Field(description="True if the question can be answered via a read-only analytics query.")
-    reason: str = Field(description="Short explanation for the decision, especially when blocked.")
+    allowed: bool = Field(
+        description="True if the question can be answered via a read-only analytics query."
+    )
+    reason: str = Field(
+        description="Short explanation for the decision, especially when blocked."
+    )
 
 
 class GeneratedQuery(BaseModel):
     """A single generated SQL statement."""
 
-    sql: str = Field(description="A single SQLite SELECT statement. No markdown fences, no commentary.")
+    sql: str = Field(
+        description="A single SQLite SELECT statement. No markdown fences, no commentary."
+    )
 
 
 class ReportDecision(BaseModel):
     """Report builder's grounded answer and continuation decision."""
 
-    needs_more_data: bool = Field(description="True if another SQL query is required to fully answer the question.")
-    follow_up_instructions: str = Field(
-        default="", description="What additional data the next query should gather, if needs_more_data is true."
+    needs_more_data: bool = Field(
+        description="True if another SQL query is required to fully answer the question."
     )
-    answer_markdown: str = Field(description="The grounded answer in markdown, including a data table when relevant.")
+    follow_up_instructions: str = Field(
+        default="",
+        description="What additional data the next query should gather, if needs_more_data is true.",
+    )
+    answer_markdown: str = Field(
+        description="The grounded answer in markdown, including a data table when relevant."
+    )
 
 
 @lru_cache(maxsize=1)
@@ -123,10 +134,15 @@ def _resolve_question(state: AgentState) -> str:
     return ""
 
 
-def _render_temporal_prompt(current_datetime: str | None = None, *, is_evaluation: bool = False) -> str:
+def _render_temporal_prompt(
+    current_datetime: str | None = None, *, is_evaluation: bool = False
+) -> str:
     """Render temporal guidance using the runtime clock tool."""
-    timestamp = current_datetime or get_current_datetime.invoke({"is_evaluation": is_evaluation})
+    timestamp = current_datetime or get_current_datetime.invoke(
+        {"is_evaluation": is_evaluation}
+    )
     return TEMPORAL_GUIDANCE_PROMPT.format(current_datetime=timestamp)
+
 
 def _summarize_history(history: list[QueryRecord]) -> str:
     """Render all executed query results as plain text for LLM grounding."""
@@ -147,15 +163,28 @@ def _summarize_history(history: list[QueryRecord]) -> str:
 def intent_detector(state: AgentState) -> dict[str, Any]:
     """Classify the user question as allowed or blocked before any SQL is generated."""
     question = _resolve_question(state)
-    messages: list[Any] = [SystemMessage(content=INTENT_SYSTEM_PROMPT), HumanMessage(content=question)]
+    messages: list[Any] = [
+        SystemMessage(content=INTENT_SYSTEM_PROMPT),
+        HumanMessage(content=question),
+    ]
     if state.get("task_context"):
-        messages.append(HumanMessage(content=f"Task-specific requirements:\n{state['task_context']}"))
-    decision = _get_llm().with_structured_output(IntentDecision).invoke(
-        messages
-    )
+        messages.append(
+            HumanMessage(
+                content=f"Task-specific requirements:\n{state['task_context']}"
+            )
+        )
+    decision = _get_llm().with_structured_output(IntentDecision).invoke(messages)
     explicit_write = any(
         keyword in question.lower()
-        for keyword in ("insert ", "update ", "delete ", "drop ", "alter ", "create table", "modify data")
+        for keyword in (
+            "insert ",
+            "update ",
+            "delete ",
+            "drop ",
+            "alter ",
+            "create table",
+            "modify data",
+        )
     )
     blocked = not decision.allowed and (explicit_write or not state.get("task_context"))
     update: dict[str, Any] = {
@@ -178,22 +207,40 @@ def query_generator(state: AgentState) -> dict[str, Any]:
                 schema=_load_schema_skill(),
             )
         ),
-        HumanMessage(content=_render_temporal_prompt(is_evaluation=bool(state.get("is_evaluation")))),
+        HumanMessage(
+            content=_render_temporal_prompt(
+                is_evaluation=bool(state.get("is_evaluation"))
+            )
+        ),
         HumanMessage(content=f"User question: {state['user_question']}"),
     ]
     if state.get("task_context"):
-        prompt.append(HumanMessage(content=f"Task-specific requirements:\n{state['task_context']}"))
+        prompt.append(
+            HumanMessage(
+                content=f"Task-specific requirements:\n{state['task_context']}"
+            )
+        )
     if state.get("required_output_columns"):
         columns = ", ".join(state["required_output_columns"])
         prompt.append(HumanMessage(content=f"Required output columns: {columns}."))
     history = state.get("query_history") or []
     if history:
-        prompt.append(HumanMessage(content=f"Previously executed queries:\n{_summarize_history(history)}"))
+        prompt.append(
+            HumanMessage(
+                content=f"Previously executed queries:\n{_summarize_history(history)}"
+            )
+        )
     if state.get("follow_up_instructions"):
-        prompt.append(HumanMessage(content=f"Additional data needed: {state['follow_up_instructions']}"))
+        prompt.append(
+            HumanMessage(
+                content=f"Additional data needed: {state['follow_up_instructions']}"
+            )
+        )
     if state.get("validation_feedback"):
         prompt.append(
-            HumanMessage(content=f"The previous query was rejected: {state['validation_feedback']}. Fix it.")
+            HumanMessage(
+                content=f"The previous query was rejected: {state['validation_feedback']}. Fix it."
+            )
         )
     result = _get_llm().with_structured_output(GeneratedQuery).invoke(prompt)
     return {"query": result.sql, "validation_feedback": None}
@@ -203,11 +250,17 @@ def query_validator(state: AgentState) -> dict[str, Any]:
     """Check the generated SQL is read-only and syntactically valid without executing it."""
     error = validate_sql_syntax(state["query"])
     if error is None:
-        error = _validate_aggregation_contract(state["query"], state.get("task_context"))
+        error = _validate_aggregation_contract(
+            state["query"], state.get("task_context")
+        )
     if error is None:
         return {"query_validation": [], "validation_feedback": None, "retry_count": 0}
     retry_count = (state.get("retry_count") or 0) + 1
-    return {"query_validation": [error], "validation_feedback": error, "retry_count": retry_count}
+    return {
+        "query_validation": [error],
+        "validation_feedback": error,
+        "retry_count": retry_count,
+    }
 
 
 def _validate_aggregation_contract(sql: str, task_context: str | None) -> str | None:
@@ -238,7 +291,13 @@ def _route_after_validation(state: AgentState) -> str:
 def record_query_failure(state: AgentState) -> dict[str, Any]:
     """Record a query that never passed validation so the report builder can still respond."""
     history = list(state.get("query_history") or [])
-    history.append({"sql": state.get("query"), "rows": None, "error": state.get("validation_feedback")})
+    history.append(
+        {
+            "sql": state.get("query"),
+            "rows": None,
+            "error": state.get("validation_feedback"),
+        }
+    )
     return {
         "query_history": history,
         "turn_count": (state.get("turn_count") or 0) + 1,
@@ -255,10 +314,20 @@ def executor(state: AgentState) -> dict[str, Any]:
     try:
         rows = execute_readonly_query.invoke({"sql": state["query"]})
         history.append({"sql": state["query"], "rows": rows, "error": None})
-        return {"query_result": rows, "query_history": history, "turn_count": turn_count, "error": None}
+        return {
+            "query_result": rows,
+            "query_history": history,
+            "turn_count": turn_count,
+            "error": None,
+        }
     except Exception as exc:  # noqa: BLE001 - surfaced to report_builder, not raised
         history.append({"sql": state["query"], "rows": None, "error": str(exc)})
-        return {"query_result": None, "query_history": history, "turn_count": turn_count, "error": str(exc)}
+        return {
+            "query_result": None,
+            "query_history": history,
+            "turn_count": turn_count,
+            "error": str(exc),
+        }
 
 
 def report_builder(state: AgentState) -> dict[str, Any]:
@@ -272,12 +341,23 @@ def report_builder(state: AgentState) -> dict[str, Any]:
                 forced_final_note=_FORCED_FINAL_NOTE if forced_final else "",
             ).rstrip()
         ),
-        HumanMessage(content=_render_temporal_prompt(is_evaluation=bool(state.get("is_evaluation")))),
+        HumanMessage(
+            content=_render_temporal_prompt(
+                is_evaluation=bool(state.get("is_evaluation"))
+            )
+        ),
         HumanMessage(content=f"User question: {state['user_question']}"),
-        HumanMessage(content=f"Query history:\n{_summarize_history(state.get('query_history') or [])}"),
+        HumanMessage(
+            content=f"Query history:\n{_summarize_history(state.get('query_history') or [])}"
+        ),
     ]
     if state.get("task_context"):
-        prompt.insert(2, HumanMessage(content=f"Task-specific requirements:\n{state['task_context']}"))
+        prompt.insert(
+            2,
+            HumanMessage(
+                content=f"Task-specific requirements:\n{state['task_context']}"
+            ),
+        )
     if state.get("required_output_columns"):
         columns = ", ".join(state["required_output_columns"])
         prompt.insert(3, HumanMessage(content=f"Required output columns: {columns}."))
@@ -286,7 +366,9 @@ def report_builder(state: AgentState) -> dict[str, Any]:
     return {
         "final_answer": decision.answer_markdown,
         "needs_more_data": needs_more,
-        "follow_up_instructions": decision.follow_up_instructions if needs_more else None,
+        "follow_up_instructions": decision.follow_up_instructions
+        if needs_more
+        else None,
     }
 
 
@@ -315,12 +397,18 @@ def build_workflow() -> StateGraph:
     workflow.add_conditional_edges(
         "query_validator",
         _route_after_validation,
-        {"executor": "executor", "query_generator": "query_generator", "give_up": "record_query_failure"},
+        {
+            "executor": "executor",
+            "query_generator": "query_generator",
+            "give_up": "record_query_failure",
+        },
     )
     workflow.add_edge("executor", "report_builder")
     workflow.add_edge("record_query_failure", "report_builder")
     workflow.add_conditional_edges(
-        "report_builder", _route_after_report, {"query_generator": "query_generator", "__end__": END}
+        "report_builder",
+        _route_after_report,
+        {"query_generator": "query_generator", "__end__": END},
     )
     return workflow
 

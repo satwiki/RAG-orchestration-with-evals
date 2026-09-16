@@ -24,6 +24,7 @@ REQUIRED_SAMPLE_FIELDS = (
     "claims",
 )
 
+
 @dataclass(frozen=True)
 class GroundtruthSample:
     """One Text2SQL evaluation sample from the repository golden file."""
@@ -49,16 +50,25 @@ class GroundtruthDataset:
 
 def default_dataset_path() -> Path:
     """Return the default ecommerce sales analytics golden file."""
-    return Path(__file__).resolve().parent / "groundtruth" / "rag-ecommerce-sales-analytics-20260909.json"
+    return (
+        Path(__file__).resolve().parent
+        / "groundtruth"
+        / "rag-ecommerce-sales-analytics-20260909.json"
+    )
 
 
 def dataset_as_of_date(dataset: GroundtruthDataset) -> date:
     """Return the frozen analysis date declared by a groundtruth dataset."""
-    raw_date = dataset.metadata.get("as_of_date") or str(dataset.metadata.get("created_at", ""))[:10]
+    raw_date = (
+        dataset.metadata.get("as_of_date")
+        or str(dataset.metadata.get("created_at", ""))[:10]
+    )
     try:
         return date.fromisoformat(raw_date)
     except ValueError as exc:
-        raise ValueError(f"Groundtruth metadata must provide a valid as_of_date, got {raw_date!r}.") from exc
+        raise ValueError(
+            f"Groundtruth metadata must provide a valid as_of_date, got {raw_date!r}."
+        ) from exc
 
 
 def load_groundtruth(path: Path | None = None) -> GroundtruthDataset:
@@ -82,7 +92,9 @@ def load_groundtruth(path: Path | None = None) -> GroundtruthDataset:
 def parse_groundtruth_payload(payload: Any, dataset_path: Path) -> GroundtruthDataset:
     """Validate and parse an in-memory groundtruth document."""
     if not isinstance(payload, dict):
-        raise ValueError(f"{dataset_path} must contain a JSON object with metadata and samples.")
+        raise ValueError(
+            f"{dataset_path} must contain a JSON object with metadata and samples."
+        )
 
     metadata = payload.get("metadata")
     samples_payload = payload.get("samples")
@@ -104,7 +116,9 @@ def parse_groundtruth_payload(payload: Any, dataset_path: Path) -> GroundtruthDa
             raise ValueError(f"Duplicate sample id: {sample_id}")
         seen_ids.add(sample_id)
         claims = raw["claims"]
-        if not isinstance(claims, list) or not all(isinstance(claim, str) for claim in claims):
+        if not isinstance(claims, list) or not all(
+            isinstance(claim, str) for claim in claims
+        ):
             raise ValueError(f"Sample {sample_id} claims must be a list of strings.")
         samples.append(
             GroundtruthSample(
@@ -113,7 +127,9 @@ def parse_groundtruth_payload(payload: Any, dataset_path: Path) -> GroundtruthDa
                 question=str(raw["question"]),
                 schema_context=str(raw["schema_context"]),
                 gold_sql=str(raw["gold_sql"]),
-                gold_result=raw["gold_result"] if isinstance(raw["gold_result"], str) else json.dumps(raw["gold_result"]),
+                gold_result=raw["gold_result"]
+                if isinstance(raw["gold_result"], str)
+                else json.dumps(raw["gold_result"]),
                 expected_output=str(raw["expected_output"]),
                 claims=list(claims),
             )
@@ -132,6 +148,7 @@ def save_groundtruth(path: Path, payload: dict[str, Any]) -> GroundtruthDataset:
     )
     temporary_path.replace(path)
     return dataset
+
 
 def sample_to_golden(sample: GroundtruthSample) -> Golden:
     """Map a repository sample onto DeepEval's Golden model.

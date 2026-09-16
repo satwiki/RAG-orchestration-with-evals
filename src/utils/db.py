@@ -21,7 +21,9 @@ class QueryRejectedError(ValueError):
 
 def get_db_path() -> Path:
     """Resolve the e-commerce SQLite database from the environment or local default."""
-    default_path = Path(__file__).resolve().parents[1] / "local_db" / "ecommerce" / "ecommerce.db"
+    default_path = (
+        Path(__file__).resolve().parents[1] / "local_db" / "ecommerce" / "ecommerce.db"
+    )
     return Path(os.environ.get("ECOMMERCE_DB_PATH", default_path))
 
 
@@ -33,7 +35,9 @@ def assert_read_only(sql: str) -> None:
     if ";" in statement:
         raise QueryRejectedError("Only a single SQL statement is allowed.")
     if not re.match(r"^\s*(SELECT|WITH)\b", statement, re.IGNORECASE):
-        raise QueryRejectedError("Only SELECT (or WITH ... SELECT) statements are allowed.")
+        raise QueryRejectedError(
+            "Only SELECT (or WITH ... SELECT) statements are allowed."
+        )
     if _FORBIDDEN_KEYWORDS.search(statement):
         raise QueryRejectedError("Statement contains a disallowed write/DDL keyword.")
 

@@ -130,7 +130,9 @@ def connect_database(db_path: Path) -> sqlite3.Connection:
     return connection
 
 
-def apply_schema(connection: sqlite3.Connection, schema_path: Path = SCHEMA_PATH) -> None:
+def apply_schema(
+    connection: sqlite3.Connection, schema_path: Path = SCHEMA_PATH
+) -> None:
     """Apply the SQL schema to an open connection."""
     schema_sql = schema_path.read_text(encoding="utf-8")
     connection.executescript(schema_sql)
@@ -521,7 +523,9 @@ def verify_database(connection: sqlite3.Connection) -> dict[str, object]:
         raise RuntimeError(f"Unexpected order statuses found: {sorted(unexpected)}")
     missing = expected_statuses - set(status_counts)
     if missing:
-        raise RuntimeError(f"Missing required order statuses in sample data: {sorted(missing)}")
+        raise RuntimeError(
+            f"Missing required order statuses in sample data: {sorted(missing)}"
+        )
 
     fulfilled_count = status_counts.get("delivered", 0)
     non_cancelled = sum(
@@ -535,7 +539,9 @@ def verify_database(connection: sqlite3.Connection) -> dict[str, object]:
     engagement_count = _count_rows(connection, "product_engagement")
     checks["product_engagement_rows"] = engagement_count
     if engagement_count < 1:
-        raise RuntimeError("product_engagement must contain daily click and time-spent rows")
+        raise RuntimeError(
+            "product_engagement must contain daily click and time-spent rows"
+        )
 
     engagement_stats = connection.execute(
         """
