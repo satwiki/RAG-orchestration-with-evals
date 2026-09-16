@@ -46,9 +46,7 @@ _SKIP_DIR_NAMES = frozenset(
     }
 )
 _FRAMEWORK_LABELS = {
-    "agentic-langgraph": "LangGraph",
-    "langgraph": "LangGraph",
-    "maf": "Microsoft Agent Framework",
+    "agentic-langgraph": "e-commerce analytics",
 }
 
 logger = logging.getLogger(__name__)

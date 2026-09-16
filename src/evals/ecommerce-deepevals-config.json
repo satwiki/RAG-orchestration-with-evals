@@ -1,0 +1,41 @@
+{
+  "use_case": "ecommerce-text2sql",
+  "description": "DeepEval metric configuration for ecommerce Text2SQL evaluation.",
+  "metrics": [
+    {
+      "name": "SQL Execution Accuracy",
+      "enabled": true,
+      "threshold": 1.0,
+      "evaluation_type": "deterministic",
+      "description": "Compares generated SQL result rows with rows from the gold SQL."
+    },
+    {
+      "name": "Schema Adherence",
+      "enabled": true,
+      "threshold": 1.0,
+      "evaluation_type": "deterministic",
+      "description": "Checks that generated SQL is read-only and valid against the database schema."
+    },
+    {
+      "name": "Answer Correctness",
+      "enabled": true,
+      "threshold": 0.7,
+      "evaluation_type": "llm-as-judge",
+      "description": "Scores whether the final answer matches the expected facts and claims."
+    },
+    {
+      "name": "Answer Faithfulness",
+      "enabled": true,
+      "threshold": 0.7,
+      "evaluation_type": "llm-as-judge",
+      "description": "Scores whether final-answer claims are supported by executed SQL rows."
+    },
+    {
+      "name": "Contextual Relevancy",
+      "enabled": true,
+      "threshold": 0.7,
+      "evaluation_type": "llm-as-judge",
+      "description": "Scores whether retrieved schema context is relevant to the question."
+    }
+  ]
+}

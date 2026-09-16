@@ -30,7 +30,7 @@ Use the following technologies in this repo. If you need to add another tech, as
 - **Dependency Management**: Use `pip` and `requirements.txt` for managing dependencies. Avoid using `conda` or other package managers.
 - **Versioning**: Use semantic versioning for the features under each framework. Update the version in the `changelog.md` file in the root of the repo for any new feature or significant change.
 - **Agent Design**: When writing Agents or multi-agent setups, follow the framework-specific guidelines and best practices.
-  - Framework directories are intentionally hyphenated. Never create or import `src.langgraph` or `src.maf`; use the existing dynamic-loading pattern in `src/main.py` and `tests/conftest.py`.
+  - Framework directories are intentionally hyphenated e.g. `agentic-langgraph` or `agentic-maf`. Never create or import `src.langgraph` or `src.maf`; use the existing dynamic-loading pattern in `src/main.py` and `tests/conftest.py`.
   - If not specified in prompt, ask the user following questions before designing the Agent:
     1. What is the goal of the Agent?
     2. What are the inputs and outputs of the Agent?
@@ -42,7 +42,7 @@ Use the following technologies in this repo. If you need to add another tech, as
   - **Never** package non-deterministic functions, decision-making, sub-agent routing, hand-off as tools for Agents.
   - **Use** framework-specific syntaxes to create tools, preferably in `src/<framework>/tools.py` file.
 - **Reusable Components**: Create reusable components (not related to tools for Agents) for common tasks under `src/utils` folder and import the relevant methods to scripts inside `src/<framework>/utils` folder. These utilities should be designed in a way that they can be shared across the project, ideally for both agent development and evaluation, and different frameworks (langchain and MAF). Primary purpose is to promote code reuse across the repo and maintainability.
-  -  Make sure that you are not importing any framework eg langchain or MAF specific code inside `utils/` folder.
+  -  Make sure that you are not importing any framework eg langchain or MAF specific code inside `src/utils/` folder.
   - Use separate of concerns to create appropriate utility functions/script eg `db.py` to handle db related functions etc.
 - **Adding skills**: If you add a new agent skill, add it under `src/skills` folder. Skills should be framework-agnostic as much as possible to promote reusability. Update the `design.md` in the relevant framework folder(s) to reflect the addition of the new skill and its usage. The skill should be designed to be framework-agnostic, and should contain only the specific logic, not how or when to call it. The calling logic should be in the framework-specific code.
 - **Evaluation Metrics**: Implement evaluation metrics that are relevant to the RAG application.

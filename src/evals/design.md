@@ -9,11 +9,12 @@ ms.topic: concept
 ## Pipeline
 
 Load groundtruth JSON -> map samples to DeepEval `LLMTestCase` records -> invoke
-the LangGraph agent -> score SQL execution deterministically -> score the final
-answer with GEval.
+the selected framework agent -> score SQL execution deterministically -> score
+the final answer with GEval.
 
-The evaluator is framework-neutral at the record boundary. LangGraph is the
-only implemented adapter today because `src/agentic-maf` has no `agent.py`.
+The evaluator is framework-neutral at the record boundary. Both the LangGraph
+and Microsoft Agent Framework samples expose `get_compiled_agent().invoke(...)`
+and can be selected with `--framework`.
 
 ## Dataset mapping
 

@@ -37,6 +37,7 @@ SRC_DIR = EVAL_DIR.parent
 REPO_ROOT = SRC_DIR.parent
 DEFAULT_DB_PATH = Path("src/local_db/ecommerce/ecommerce.db")
 RESULTS_DIR = EVAL_DIR / "results"
+DEFAULT_CONFIG_PATH = EVAL_DIR / "ecommerce-deepevals-config.json"
 
 if str(EVAL_DIR) not in sys.path:
     sys.path.insert(0, str(EVAL_DIR))
@@ -53,8 +54,11 @@ from dataset import (
     sample_to_golden,
 )
 from metrics import (
+    AnswerFaithfulnessMetric,
     SqlExecutionAccuracyMetric,
+    SchemaAdherenceMetric,
     build_answer_correctness_metric,
+    build_contextual_relevancy_metric,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,6 +84,66 @@ class EvaluationRunSummary:
     framework: str
     sample_count: int
     metric_results: list[EvaluationMetricResult]
+
+
+def load_metric_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, dict[str, object]]:
+    """Load enabled metric settings keyed by their display name."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    raw_metrics = payload.get("metrics")
+    if not isinstance(raw_metrics, list):
+        raise ValueError("Metric config must contain a metrics array.")
+
+    config: dict[str, dict[str, object]] = {}
+    for metric in raw_metrics:
+        if not isinstance(metric, dict) or not isinstance(metric.get("name"), str):
+            raise ValueError("Each metric config entry must contain a string name.")
+        name = metric["name"]
+        if name in config:
+            raise ValueError(f"Duplicate metric name in config: {name}")
+        threshold = metric.get("threshold")
+        if not isinstance(threshold, (int, float)) or not 0 <= threshold <= 1:
+            raise ValueError(f"Metric threshold must be between 0 and 1: {name}")
+        config[name] = metric
+    return config
+
+
+def build_metrics(
+    db_path: Path,
+    config: dict[str, dict[str, object]],
+    skip_llm: bool,
+) -> list[object]:
+    """Build enabled metrics from configuration and the selected runtime options."""
+    builders = {
+        "SQL Execution Accuracy": lambda threshold: SqlExecutionAccuracyMetric(
+            db_path=db_path, threshold=threshold
+        ),
+        "Schema Adherence": lambda threshold: SchemaAdherenceMetric(
+            db_path=db_path, threshold=threshold
+        ),
+        "Answer Correctness": lambda threshold: build_answer_correctness_metric(
+            threshold=threshold
+        ),
+        "Answer Faithfulness": lambda threshold: AnswerFaithfulnessMetric(
+            threshold=threshold
+        ),
+        "Contextual Relevancy": lambda threshold: build_contextual_relevancy_metric(
+            threshold=threshold
+        ),
+    }
+    unknown = set(config) - set(builders)
+    if unknown:
+        raise ValueError(f"Unsupported metric(s) in config: {sorted(unknown)}")
+
+    metrics: list[object] = []
+    for name, settings in config.items():
+        if not settings.get("enabled", False):
+            continue
+        if skip_llm and settings.get("evaluation_type") == "llm-as-judge":
+            continue
+        metrics.append(builders[name](float(settings["threshold"])))
+    if not metrics:
+        raise ValueError("Metric config enabled no metrics for the selected run.")
+    return metrics
 
 
 def write_evaluation_results(
@@ -157,6 +221,12 @@ def create_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=f"SQLite database used for execution scoring (default: {DEFAULT_DB_PATH}).",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help=f"Metric configuration JSON (default: {DEFAULT_CONFIG_PATH}).",
     )
     parser.add_argument(
         "--sample-id",
@@ -254,6 +324,7 @@ def run_evaluation(
     sample_ids: list[str] | None = None,
     limit: int | None = None,
     skip_llm: bool = False,
+    config_path: Path | None = None,
 ) -> EvaluationRunSummary:
     """Run DeepEval and return structured results for CLI or UI callers."""
     configure_output_encoding()
@@ -281,9 +352,11 @@ def run_evaluation(
     )
 
     test_cases = [build_test_case(sample, framework) for sample in samples]
-    metrics = [SqlExecutionAccuracyMetric(db_path=resolved_db_path)]
-    if not skip_llm:
-        metrics.append(build_answer_correctness_metric())
+    metrics = build_metrics(
+        resolved_db_path,
+        load_metric_config(config_path or DEFAULT_CONFIG_PATH),
+        skip_llm,
+    )
 
     result = evaluate(
         test_cases=test_cases,
@@ -351,6 +424,7 @@ def main(argv: list[str] | None = None) -> int:
             sample_ids=args.sample_ids,
             limit=args.limit,
             skip_llm=args.skip_llm,
+            config_path=args.config,
         )
         return summary.exit_code
     except ValueError as exc:

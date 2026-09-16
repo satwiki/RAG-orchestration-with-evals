@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import logging
 import os
+import copy
+import json
 from pathlib import Path
 from typing import Any
 
-from deepeval.metrics import BaseMetric, GEval
+from deepeval.metrics import BaseMetric, ContextualRelevancyMetric, GEval
 from deepeval.models import AzureOpenAIModel, DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from openai import AzureOpenAI, OpenAI
 
-from src.utils.db import QueryRejectedError, run_read_only_query
+from src.utils.db import QueryRejectedError, run_read_only_query, validate_sql_syntax
 from sql_result_comparison import (
     parse_result_payload,
     results_equivalent,
@@ -126,6 +128,123 @@ class SqlExecutionAccuracyMetric(BaseMetric):
         """Human-readable metric name shown in DeepEval output."""
         return "SQL Execution Accuracy"
 
+
+class SchemaAdherenceMetric(BaseMetric):
+    """Deterministically verify that generated SQL is valid for the target schema."""
+
+    def __init__(self, db_path: Path, threshold: float = 1.0) -> None:
+        """Configure schema validation against an isolated SQLite database."""
+        self.db_path = Path(db_path)
+        self.threshold = threshold
+        self.async_mode = False
+        self.include_reason = True
+        self.score: float | None = None
+        self.reason: str | None = None
+        self.success: bool | None = None
+        self.error: str | None = None
+
+    def measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
+        """Return one when generated SQL is executable against the evaluation schema."""
+        sql = str((test_case.additional_metadata or {}).get("generated_sql") or "").strip()
+        if not sql:
+            self.score = 0.0
+            self.reason = "Agent did not generate SQL."
+            self.success = False
+            return self.score
+        error = validate_sql_syntax(sql, self.db_path)
+        self.score = 0.0 if error else 1.0
+        self.reason = error or "Generated SQL is valid against the evaluation schema."
+        self.success = self.score >= self.threshold
+        return self.score
+
+    async def a_measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
+        """Run the synchronous schema validation path."""
+        return self.measure(test_case, *args, **kwargs)
+
+    def is_successful(self) -> bool:
+        """Return whether schema adherence meets the configured threshold."""
+        if self.error is not None:
+            self.success = False
+        else:
+            self.success = (self.score or 0.0) >= self.threshold
+        return bool(self.success)
+
+    @property
+    def __name__(self) -> str:
+        """Human-readable metric name shown in DeepEval output."""
+        return "Schema Adherence"
+
+
+class AnswerFaithfulnessMetric(BaseMetric):
+    """Judge whether the final answer is supported by the agent's SQL result rows."""
+
+    def __init__(self, model: DeepEvalBaseLLM | None = None, threshold: float = 0.7) -> None:
+        """Configure the LLM judge used for answer-to-result grounding."""
+        self._metric = GEval(
+            name="Answer Faithfulness",
+            criteria=(
+                "Determine whether every material factual claim in the actual answer is "
+                "supported by the executed SQL result. Do not reward claims that are only "
+                "supported by the question or schema. Missing, invented, or contradictory "
+                "numbers, entities, rankings, dates, and units should fail the metric."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+                LLMTestCaseParams.RETRIEVAL_CONTEXT,
+            ],
+            evaluation_steps=[
+                "Read the executed SQL result supplied as retrieval context.",
+                "List the material factual claims in the actual answer.",
+                "Check each claim against the result rows, allowing only equivalent formatting.",
+                "Score 1.0 when all material claims are supported and 0.0 when any material claim is unsupported or contradicted.",
+            ],
+            model=model or build_judge_model(),
+            threshold=threshold,
+            async_mode=False,
+            strict_mode=False,
+        )
+        self.threshold = threshold
+        self.async_mode = False
+        self.include_reason = True
+        self.score: float | None = None
+        self.reason: str | None = None
+        self.success: bool | None = None
+        self.error: str | None = None
+
+    def measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
+        """Score the answer against captured result rows instead of schema text."""
+        rows = _last_successful_rows(test_case.additional_metadata or {})
+        if rows is None:
+            self.score = 0.0
+            self.reason = "Agent did not capture rows for a successful SQL statement."
+            self.success = False
+            return self.score
+
+        faithfulness_case = copy.copy(test_case)
+        faithfulness_case.retrieval_context = [json.dumps(rows, sort_keys=True, default=str)]
+        self.score = self._metric.measure(faithfulness_case, *args, **kwargs)
+        self.reason = self._metric.reason
+        self.success = self._metric.is_successful()
+        return self.score
+
+    async def a_measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
+        """Run the synchronous faithfulness judge."""
+        return self.measure(test_case, *args, **kwargs)
+
+    def is_successful(self) -> bool:
+        """Return whether faithfulness meets the configured threshold."""
+        if self.error is not None:
+            self.success = False
+        else:
+            self.success = (self.score or 0.0) >= self.threshold
+        return bool(self.success)
+
+    @property
+    def __name__(self) -> str:
+        """Human-readable metric name shown in DeepEval output."""
+        return "Answer Faithfulness"
+
 class FoundryChatJudge(DeepEvalBaseLLM):
     """DeepEval judge that uses the same Foundry or Azure OpenAI settings as the agent."""
 
@@ -182,7 +301,10 @@ def build_judge_model() -> DeepEvalBaseLLM:
     )
 
 
-def build_answer_correctness_metric(model: DeepEvalBaseLLM | None = None) -> GEval:
+def build_answer_correctness_metric(
+    model: DeepEvalBaseLLM | None = None,
+    threshold: float = 0.7,
+) -> GEval:
     """Build a GEval metric that scores the final answer against expected_output and claims."""
     return GEval(
         name="Answer Correctness",
@@ -206,7 +328,20 @@ def build_answer_correctness_metric(model: DeepEvalBaseLLM | None = None) -> GEv
             "Score 1.0 when facts match, 0.0 when a material fact is missing or wrong.",
         ],
         model=model or build_judge_model(),
-        threshold=0.7,
+        threshold=threshold,
         async_mode=False,
         strict_mode=False,
+    )
+
+
+def build_contextual_relevancy_metric(
+    model: DeepEvalBaseLLM | None = None,
+    threshold: float = 0.7,
+) -> ContextualRelevancyMetric:
+    """Build DeepEval's schema-context relevancy metric."""
+    return ContextualRelevancyMetric(
+        threshold=threshold,
+        model=model or build_judge_model(),
+        include_reason=True,
+        async_mode=False,
     )
