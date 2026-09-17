@@ -11,8 +11,10 @@ keywords:
   - deepeval
   - promptfoo
   - mlflow
-estimated_reading_time: 10
 ---
+
+## Decision
+Selected Deepevals for text-to-sql evaluation. It's strong golden dataset support and several in-built evaluators, along with native langgraph support made it more attractive compared to Ragas.
 
 ## Executive summary
 
